@@ -1,11 +1,11 @@
 (() => {
 'use strict';
 console.info('Mesa de Ayuda TIC');
-if (window.__MESA_TIC_APP_V4_8_19_LOADED__) {
+if (window.__MESA_TIC_APP_V4_8_20_LOADED__) {
   console.warn('Mesa de Ayuda TIC: app.js ya fue cargado. Se evita inicialización duplicada.');
   return;
 }
-window.__MESA_TIC_APP_V4_8_19_LOADED__ = true;
+window.__MESA_TIC_APP_V4_8_20_LOADED__ = true;
 
 const SUPABASE_URL = 'https://jppykxqsxayzypzdbnqd.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_CH1hn5LpS3zWPdDWqiM4jg_F7OuK7Ry';
@@ -17,6 +17,41 @@ const modalRoot = document.getElementById('modalRoot');
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
 });
+
+function oauthRedirectUrl(){
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.hash = '';
+  if(url.pathname.endsWith('/index.html')) url.pathname = url.pathname.replace(/index\.html$/, '');
+  return url.toString();
+}
+function cleanOAuthUrl(){
+  try{
+    const url = new URL(window.location.href);
+    ['code','error','error_code','error_description','state'].forEach(k=>url.searchParams.delete(k));
+    window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : '') + (url.hash ? url.hash : ''));
+  }catch(_){ /* sin bloqueo */ }
+}
+async function finishOAuthRedirectIfNeeded(){
+  const url = new URL(window.location.href);
+  const oauthError = url.searchParams.get('error') || url.searchParams.get('error_code');
+  const oauthErrorDescription = url.searchParams.get('error_description');
+  const code = url.searchParams.get('code');
+  if(oauthError){
+    sessionStorage.setItem('mesa_tic_oauth_error', oauthErrorDescription || oauthError);
+    cleanOAuthUrl();
+    return null;
+  }
+  if(!code) return null;
+  renderSoftLoading('Validando acceso con Google…', 'Estamos cerrando la autenticación institucional con Supabase.');
+  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+  cleanOAuthUrl();
+  if(error){
+    sessionStorage.setItem('mesa_tic_oauth_error', error.message || 'No se pudo completar el inicio con Google.');
+    return null;
+  }
+  return data?.session || null;
+}
 
 const state = {
   session: null,
@@ -425,6 +460,7 @@ async function guardedBoot(){
 async function init(){
   ['click','keydown','touchstart'].forEach(evt=>document.addEventListener(evt, unlockNotificationSound, { once:true, passive:true }));
   if(!window.supabase){ renderFatal('No cargó la librería de Supabase. Revisa la conexión a internet.'); return; }
+  await finishOAuthRedirectIfNeeded();
   const { data } = await supabase.auth.getSession();
   state.session = data.session; state.user = data.session?.user ?? null;
   state.pendingTicketId = urlTicketId();
@@ -496,6 +532,12 @@ function renderLogin(){
   document.getElementById('loginForm').addEventListener('submit', handleLogin);
   document.getElementById('googleLoginBtn')?.addEventListener('click', handleGoogleLogin);
   document.getElementById('resetBtn').addEventListener('click', handleReset);
+  const oauthMessage = sessionStorage.getItem('mesa_tic_oauth_error');
+  if(oauthMessage){
+    sessionStorage.removeItem('mesa_tic_oauth_error');
+    const msg = document.getElementById('loginMessage');
+    if(msg) msg.innerHTML = `<div class="error">${safe(oauthMessage)}</div>`;
+  }
 }
 async function handleLogin(e){
   e.preventDefault();
@@ -512,7 +554,7 @@ async function handleGoogleLogin(){
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: `${location.origin}${location.pathname}`,
+      redirectTo: oauthRedirectUrl(),
       queryParams: { hd: 'sanpedro-valle.gov.co', prompt: 'select_account' }
     }
   });
@@ -522,7 +564,7 @@ async function handleReset(){
   const email = document.getElementById('email').value.trim().toLowerCase();
   const msg = document.getElementById('loginMessage');
   if(!email){ msg.innerHTML = '<div class="warning">Escribe primero el correo.</div>'; return; }
-  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: location.href });
+  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: oauthRedirectUrl() });
   msg.innerHTML = error ? `<div class="error">${safe(error.message)}</div>` : '<div class="success">Si la cuenta existe, se enviará el enlace de recuperación.</div>';
 }
 async function changeMyPassword(){
