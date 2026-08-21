@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mesa de Ayuda TIC · Alcaldía de San Pedro</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="icon" href="assets/favicon.ico" sizes="any">
+  <link rel="icon" href="assets/favicon-32.png" type="image/png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="manifest" href="site.webmanifest">
+  <meta name="theme-color" content="#0b57d0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="apple-touch-fullscreen" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Mesa TIC">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="preload" href="assets/notification-soft.mp3" as="audio">
+  <link rel="stylesheet" href="app.css?v=4.8.15">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div id="app" class="boot-screen">
+    <div class="boot-card boot-card-pro">
+      <div class="boot-icon-wrap"><img class="boot-app-icon" src="assets/app-icon-192.png" alt="Mesa de Ayuda TIC"></div>
+      <img class="boot-loader-gif" src="assets/loader-hourglass.gif" alt="Cargando">
+      <strong>Cargando Mesa de Ayuda TIC…</strong>
+      <span>Preparando panel, solicitudes, cronograma y notificaciones</span>
+    </div>
+  </div>
+  <div id="modalRoot"></div>
+  <audio id="notificationSound" src="assets/notification-soft.mp3" preload="auto"></audio>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js?v=4.8.15').catch(() => {});
+      });
+    }
+  </script>
+  <script src="config.js?v=4.8.15"></script>
+  <script src="app.js?v=4.8.15"></script>
+</body>
+</html>
