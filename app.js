@@ -1,6 +1,6 @@
 (() => {
 'use strict';
-console.info('Mesa de Ayuda TIC ' + 'v4.8.15 Release Candidate Auditada');
+console.info('Mesa de Ayuda TIC ' + 'v4.8.16 Responsive Balance');
 if (window.__MESA_TIC_APP_V4_8_14_LOADED__) {
   console.warn('Mesa de Ayuda TIC: app.js ya fue cargado. Se evita inicialización duplicada.');
   return;
@@ -10,7 +10,7 @@ window.__MESA_TIC_APP_V4_8_14_LOADED__ = true;
 const SUPABASE_URL = 'https://jppykxqsxayzypzdbnqd.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_CH1hn5LpS3zWPdDWqiM4jg_F7OuK7Ry';
 const DRIVE_UPLOAD_URL_STORAGE_KEY = 'mesa_tic_drive_upload_webapp_url';
-const APP_VERSION = 'v4.8.15 Release Candidate Auditada';
+const APP_VERSION = 'v4.8.16 Responsive Balance';
 
 const app = document.getElementById('app');
 const modalRoot = document.getElementById('modalRoot');

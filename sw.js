@@ -2,8 +2,8 @@ const CACHE_NAME = 'mesa-tic-v4-8-15-shell';
 const CORE_ASSETS = [
   './',
   './index.html',
-  './app.css?v=4.8.15',
-  './app.js?v=4.8.15',
+  './app.css?v=4.8.16',
+  './app.js?v=4.8.16',
   './site.webmanifest',
   './assets/app-icon-192.png',
   './assets/app-icon-512.png',
