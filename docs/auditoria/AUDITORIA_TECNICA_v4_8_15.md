@@ -1,4 +1,4 @@
-# Auditoría técnica · Mesa de Ayuda TIC v4.8.15
+# Auditoría técnica · Mesa de Ayuda TIC versión auditada
 
 ## Resultado general
 
@@ -10,7 +10,7 @@ Estado recomendado: **lista para piloto/lanzamiento controlado**, con validació
 2. Se eliminaron iconos PNG sueltos duplicados en la raíz. Las copias canónicas permanecen en `assets/ui-icons/`.
 3. Se movieron checklists e instructivos antiguos a `docs/`.
 4. Se agregó `config.js` para configurar de forma global la URL del Web App de Drive sin depender del `localStorage` de un solo navegador.
-5. Se actualizó cache busting a `v4.8.15`.
+5. Se actualizó cache busting a `versión auditada`.
 6. Se actualizó `sw.js` con nuevo cache name y tratamiento especial para `config.js`, evitando que la URL global de Drive quede pegada por caché.
 7. Se sincronizó `frontend/app/` con la versión principal para evitar que Vercel despliegue una versión antigua si el proyecto estuviera apuntando a esa carpeta.
 

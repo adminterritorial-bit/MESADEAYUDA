@@ -1,6 +1,6 @@
 (() => {
 'use strict';
-console.info('Mesa de Ayuda TIC ' + 'v4.8.15 Release Candidate Auditada');
+console.info('Mesa de Ayuda TIC');
 if (window.__MESA_TIC_APP_V4_8_14_LOADED__) {
   console.warn('Mesa de Ayuda TIC: app.js ya fue cargado. Se evita inicialización duplicada.');
   return;
@@ -10,7 +10,7 @@ window.__MESA_TIC_APP_V4_8_14_LOADED__ = true;
 const SUPABASE_URL = 'https://jppykxqsxayzypzdbnqd.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_CH1hn5LpS3zWPdDWqiM4jg_F7OuK7Ry';
 const DRIVE_UPLOAD_URL_STORAGE_KEY = 'mesa_tic_drive_upload_webapp_url';
-const APP_VERSION = 'v4.8.15 Release Candidate Auditada';
+const APP_VERSION = 'Mesa de Ayuda TIC';
 
 const app = document.getElementById('app');
 const modalRoot = document.getElementById('modalRoot');
@@ -603,7 +603,6 @@ function renderShell(){
           <div class="topbar-title"><h1>${safe(moduleLabels[state.currentView] || 'Mesa de Ayuda')}</h1><p>${safe(contextSubtitle())}</p></div>
           <form class="global-search" id="globalSearchForm"><span>${icon('search')}</span><input id="globalSearchInput" value="${safe(state.filter.globalQ)}" placeholder="Buscar solicitud, actividad, servicio…" autocomplete="off"><button type="submit">Buscar</button></form>
           <div class="top-actions">
-            <span class="release-pill">${safe(APP_VERSION)}</span>
             <button class="btn btn-soft btn-small" id="openGuideBtn"><span class="btn-mini-icon">${assetIcon('knowledge-book','Guía rápida','btn-mini-img')}</span>Guía</button>
             <button class="btn btn-soft btn-small notification-top-btn" data-jump="notifications"><span class="btn-mini-icon">${assetIcon('alerts-support','Notificaciones','btn-mini-img')}</span>Seguimiento${unreadNotifications()?`<b>${unreadNotifications()}</b>`:''}</button>
             <button class="btn btn-soft btn-small" data-jump="schedule"><span class="btn-mini-icon">${assetIcon('calendar-planner','Cronograma','btn-mini-img')}</span>Cronograma</button>
@@ -1210,7 +1209,7 @@ function renderSettings(){
   const uploadUrl = driveUploadWebAppUrl();
   return `<div class="settings-release-grid">
     <div class="card release-card">
-      <div class="section-title"><div><span class="tag">Release Candidate</span><h2>Mesa lista para lanzamiento controlado</h2><p>Versión ${safe(APP_VERSION)} · experiencia estable para escritorio, iOS y Android.</p></div><span class="pill green">Lista</span></div>
+      <div class="section-title"><div><span class="tag">Lanzamiento</span><h2>Mesa lista para uso institucional</h2><p>Experiencia estable para escritorio, iOS y Android.</p></div><span class="pill green">Lista</span></div>
       <div class="release-kpis"><div><strong>${state.services.length}</strong><span>Servicios</span></div><div><strong>${state.resources.length}</strong><span>Responsables</span></div><div><strong>${uploadEnabled()?'OK':'Pend.'}</strong><span>Drive</span></div><div><strong>${state.emailQueue.filter(x=>x.status==='failed').length}</strong><span>Correos fallidos</span></div></div>
       <div class="release-actions"><button class="btn btn-primary" data-jump="launch_check">Abrir checklist</button><button class="btn btn-soft" id="reportIssueSettingsBtn">Reportar error de la Mesa</button></div>
     </div>
