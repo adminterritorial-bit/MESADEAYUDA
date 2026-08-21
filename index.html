@@ -16,8 +16,7 @@
   <meta name="apple-touch-fullscreen" content="yes">
   <meta name="apple-mobile-web-app-title" content="Mesa TIC">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="preload" href="assets/notification-soft.mp3" as="audio">
-  <link rel="stylesheet" href="app.css?v=4.8.17">
+  <link rel="stylesheet" href="app.css?v=4.8.19">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -35,11 +34,10 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js?v=4.8.16').catch(() => {});
+        navigator.serviceWorker.register('sw.js?v=4.8.19').catch(() => {});
       });
     }
   </script>
-  <script src="config.js?v=4.8.16"></script>
-  <script src="app.js?v=4.8.17"></script>
+  <script src="app.js?v=4.8.19"></script>
 </body>
 </html>
