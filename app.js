@@ -1,11 +1,11 @@
 (() => {
 'use strict';
 console.info('Mesa de Ayuda TIC');
-if (window.__MESA_TIC_APP_V4_8_22_LOADED__) {
+if (window.__MESA_TIC_APP_V4_8_14_LOADED__) {
   console.warn('Mesa de Ayuda TIC: app.js ya fue cargado. Se evita inicialización duplicada.');
   return;
 }
-window.__MESA_TIC_APP_V4_8_22_LOADED__ = true;
+window.__MESA_TIC_APP_V4_8_14_LOADED__ = true;
 
 const SUPABASE_URL = 'https://jppykxqsxayzypzdbnqd.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_CH1hn5LpS3zWPdDWqiM4jg_F7OuK7Ry';
@@ -487,14 +487,12 @@ function renderLogin(){
           <div class="field"><label for="password">Contraseña</label><input id="password" type="password" required autocomplete="current-password" placeholder="Contraseña"></div>
           <div id="loginMessage"></div>
           <button class="btn btn-primary btn-block" type="submit">Entrar a la Mesa</button>
-          <button class="btn btn-google btn-block" id="googleLoginBtn" type="button"><span class="google-dot">G</span>Entrar con Google institucional</button>
           <button class="btn btn-secondary btn-block" id="resetBtn" type="button">Recuperar contraseña</button>
-          <p class="help-text">También puedes entrar con Google si el proveedor está activo en Supabase y el correo pertenece al dominio institucional.</p>
+          <p class="help-text">La aplicación se desbloquea únicamente después de cargar perfil, rol y permisos desde Supabase.</p>
         </form>
       </div>
     </section>`;
   document.getElementById('loginForm').addEventListener('submit', handleLogin);
-  document.getElementById('googleLoginBtn')?.addEventListener('click', handleGoogleLogin);
   document.getElementById('resetBtn').addEventListener('click', handleReset);
 }
 async function handleLogin(e){
@@ -506,35 +504,12 @@ async function handleLogin(e){
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if(error) msg.innerHTML = `<div class="error">${safe(error.message)}</div>`;
 }
-async function handleGoogleLogin(){
-  const msg = document.getElementById('loginMessage');
-  msg.innerHTML = '<div class="warning">Abriendo Google institucional…</div>';
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: `${location.origin}${location.pathname}`,
-      queryParams: { hd: 'sanpedro-valle.gov.co', prompt: 'select_account' }
-    }
-  });
-  if(error) msg.innerHTML = `<div class="error">${safe(error.message)}</div>`;
-}
 async function handleReset(){
   const email = document.getElementById('email').value.trim().toLowerCase();
   const msg = document.getElementById('loginMessage');
   if(!email){ msg.innerHTML = '<div class="warning">Escribe primero el correo.</div>'; return; }
   const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: location.href });
   msg.innerHTML = error ? `<div class="error">${safe(error.message)}</div>` : '<div class="success">Si la cuenta existe, se enviará el enlace de recuperación.</div>';
-}
-async function changeMyPassword(){
-  const p1 = document.getElementById('myNewPassword')?.value || '';
-  const p2 = document.getElementById('myNewPassword2')?.value || '';
-  const msg = document.getElementById('myPasswordMsg');
-  if(!msg) return;
-  if(p1.length < 7){ msg.innerHTML = '<div class="warning">La contraseña debe tener al menos 7 caracteres.</div>'; return; }
-  if(p1 !== p2){ msg.innerHTML = '<div class="warning">Las contraseñas no coinciden.</div>'; return; }
-  msg.innerHTML = '<div class="warning">Actualizando contraseña…</div>';
-  const { error } = await supabase.auth.updateUser({ password: p1 });
-  msg.innerHTML = error ? `<div class="error">${safe(error.message)}</div>` : '<div class="success">Contraseña actualizada correctamente.</div>';
 }
 function renderAccessPending(){
   app.innerHTML = h`<section class="access-shell"><div class="access-card"><img src="assets/logo-san-pedro-crop.png"><h1>Acceso pendiente</h1><p>Tu sesión fue validada, pero la cuenta todavía no tiene perfil activo o rol asignado.</p><p><strong>${safe(state.user?.email)}</strong></p><button class="btn btn-primary" id="logoutPending">Cerrar sesión</button></div></section>`;
@@ -696,8 +671,6 @@ function bindShell(){
   document.getElementById('markNotificationsRead')?.addEventListener('click',markAllNotificationsRead);
   document.getElementById('refreshEmailQueue')?.addEventListener('click',async()=>{ await loadEmailQueue(); renderShell(); toast('Cola de correos actualizada.'); });
   document.getElementById('saveDriveUploadUrl')?.addEventListener('click',()=>{ const v = document.getElementById('driveUploadUrlInput')?.value || ''; saveDriveUploadWebAppUrl(v); toast('Conexión de Drive guardada en este navegador.'); renderShell(); });
-  document.getElementById('changeMyPasswordBtn')?.addEventListener('click',changeMyPassword);
-  document.querySelectorAll('[data-admin-reset-password]').forEach(btn=>btn.addEventListener('click',()=>openAdminResetPassword(btn.dataset.adminResetPassword, btn.dataset.email || '')));
 }
 async function setView(view){
   if(!hasModule(view)){ toast('Este módulo no está habilitado para tu usuario.'); return; }
@@ -1217,7 +1190,7 @@ function renderUsers(){
 }
 function renderUsersTable(){
   if(!state.profiles.length) return emptyState('Sin usuarios visibles','Cuando se creen usuarios, aparecerán aquí.');
-  return `<div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Equipo</th><th>Estado</th><th>Clave</th></tr></thead><tbody>${state.profiles.map(p=>{ const role=state.roleRows.find(r=>r.profile_id===p.id)?.role_code || 'Sin rol'; const team=state.teamRows.find(t=>t.profile_id===p.id)?.team_code || ''; return `<tr><td><strong>${safe(p.full_name||'Sin nombre')}</strong></td><td>${safe(p.email)}</td><td>${safe(roleLabels[role]||role)}</td><td>${team?`<span class="pill ${team==='COM'?'com':'tic'}">${safe(team)}</span>`:'<span class="muted">Sin equipo</span>'}</td><td><span class="pill ${p.status==='active'?'green':'amber'}">${safe(p.status)}</span></td><td>${isAdmin()?`<button class="btn btn-soft btn-small" data-admin-reset-password="${safe(p.id)}" data-email="${safe(p.email)}">Cambiar</button>`:''}</td></tr>`; }).join('')}</tbody></table></div>`;
+  return `<div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Equipo</th><th>Estado</th></tr></thead><tbody>${state.profiles.map(p=>{ const role=state.roleRows.find(r=>r.profile_id===p.id)?.role_code || 'Sin rol'; const team=state.teamRows.find(t=>t.profile_id===p.id)?.team_code || ''; return `<tr><td><strong>${safe(p.full_name||'Sin nombre')}</strong></td><td>${safe(p.email)}</td><td>${safe(roleLabels[role]||role)}</td><td>${team?`<span class="pill ${team==='COM'?'com':'tic'}">${safe(team)}</span>`:'<span class="muted">Sin equipo</span>'}</td><td><span class="pill ${p.status==='active'?'green':'amber'}">${safe(p.status)}</span></td></tr>`; }).join('')}</tbody></table></div>`;
 }
 function renderRoleMap(){
   const rows = [
@@ -1245,7 +1218,7 @@ function renderSettings(){
       <div class="ios-steps"><div><strong>iPhone</strong><p>Safari → Compartir → Agregar a pantalla de inicio → Abrir como “Mesa TIC”.</p></div><div><strong>Android</strong><p>Chrome → Menú ⋮ → Instalar app / Agregar a pantalla principal.</p></div></div>
     </div>
   </div>
-  <div class="grid grid-2"><div class="card"><div class="section-title"><div><h2>Servicios activos</h2><p>Catálogo real cargado desde Supabase.</p></div></div>${state.services.length?`<div class="compact-list">${state.services.map(s=>`<div class="compact-item"><div><strong>${safe(s.name)}</strong><div class="ticket-meta">${safe(s.description||'')}</div></div><span class="pill ${s.team_code==='COM'?'com':'tic'}">${safe(s.team_code)}</span></div>`).join('')}</div>`:emptyState('Sin servicios','Ejecuta el SQL base y el patch v4.8.11 para cargar el catálogo mínimo.')}</div><div class="card"><div class="section-title"><div><h2>Recursos de cronograma</h2><p>Nombres reales de Administrador TIC y Comunicadores.</p></div><button class="btn btn-soft btn-small" data-jump="launch_check">Checklist</button></div>${state.resources.length?`<div class="compact-list">${state.resources.map(r=>`<div class="compact-item"><div><strong>${safe(r.name)}</strong><div class="ticket-meta">${safe(r.role_label)} · ${safe(r.code)}</div></div><span class="pill ${r.team_code==='COM'?'com':'tic'}">${safe(r.team_code)}</span></div>`).join('')}</div>`:emptyState('Sin recursos','No hay recursos configurados.')}</div></div><div class="grid grid-2"><div class="card upload-config-card"><div class="section-title"><div><h2>Archivos en Google Drive</h2><p>Conecta el Web App de Apps Script para que los adjuntos se guarden en Drive y Supabase solo conserve la ruta.</p></div><span class="pill ${uploadUrl?'green':'amber'}">${uploadUrl?'Activo':'Pendiente'}</span></div><div class="field"><label>URL del Web App de Google Apps Script</label><input id="driveUploadUrlInput" value="${safe(uploadUrl)}" placeholder="https://script.google.com/macros/s/.../exec"></div><button class="btn btn-primary" id="saveDriveUploadUrl">Guardar conexión Drive</button><p class="help-text">Esta URL no es una clave. La seguridad real se valida con la sesión Supabase del usuario y la service_role key guardada dentro de Apps Script.</p></div><div class="card password-card"><div class="section-title"><div><h2>Cambiar mi contraseña</h2><p>Actualiza la clave de la cuenta con la que iniciaste sesión.</p></div></div><div class="field"><label>Nueva contraseña</label><input id="myNewPassword" type="password" autocomplete="new-password" placeholder="Nueva contraseña"></div><div class="field"><label>Confirmar contraseña</label><input id="myNewPassword2" type="password" autocomplete="new-password" placeholder="Repite la contraseña"></div><div id="myPasswordMsg"></div><button class="btn btn-primary" id="changeMyPasswordBtn">Guardar nueva contraseña</button></div></div><div class="card launch-inline">${renderLaunchChecklistInner()}</div>`;
+  <div class="grid grid-2"><div class="card"><div class="section-title"><div><h2>Servicios activos</h2><p>Catálogo real cargado desde Supabase.</p></div></div>${state.services.length?`<div class="compact-list">${state.services.map(s=>`<div class="compact-item"><div><strong>${safe(s.name)}</strong><div class="ticket-meta">${safe(s.description||'')}</div></div><span class="pill ${s.team_code==='COM'?'com':'tic'}">${safe(s.team_code)}</span></div>`).join('')}</div>`:emptyState('Sin servicios','Ejecuta el SQL base y el patch v4.8.11 para cargar el catálogo mínimo.')}</div><div class="card"><div class="section-title"><div><h2>Recursos de cronograma</h2><p>Nombres reales de Administrador TIC y Comunicadores.</p></div><button class="btn btn-soft btn-small" data-jump="launch_check">Checklist</button></div>${state.resources.length?`<div class="compact-list">${state.resources.map(r=>`<div class="compact-item"><div><strong>${safe(r.name)}</strong><div class="ticket-meta">${safe(r.role_label)} · ${safe(r.code)}</div></div><span class="pill ${r.team_code==='COM'?'com':'tic'}">${safe(r.team_code)}</span></div>`).join('')}</div>`:emptyState('Sin recursos','No hay recursos configurados.')}</div></div><div class="card upload-config-card"><div class="section-title"><div><h2>Archivos en Google Drive</h2><p>Conecta el Web App de Apps Script para que los adjuntos se guarden en Drive y Supabase solo conserve la ruta.</p></div><span class="pill ${uploadUrl?'green':'amber'}">${uploadUrl?'Activo':'Pendiente'}</span></div><div class="field"><label>URL del Web App de Google Apps Script</label><input id="driveUploadUrlInput" value="${safe(uploadUrl)}" placeholder="https://script.google.com/macros/s/.../exec"></div><button class="btn btn-primary" id="saveDriveUploadUrl">Guardar conexión Drive</button><p class="help-text">Esta URL no es una clave. La seguridad real se valida con la sesión Supabase del usuario y la service_role key guardada dentro de Apps Script.</p></div><div class="card launch-inline">${renderLaunchChecklistInner()}</div>`;
 }
 
 
@@ -1309,8 +1282,6 @@ function bindView(){
   document.getElementById('openUserModal')?.addEventListener('click',openUserModal);
   document.getElementById('refreshEmailQueue')?.addEventListener('click',async()=>{ await loadEmailQueue(); renderShell(); toast('Cola de correos actualizada.'); });
   document.getElementById('saveDriveUploadUrl')?.addEventListener('click',()=>{ const v = document.getElementById('driveUploadUrlInput')?.value || ''; saveDriveUploadWebAppUrl(v); toast('Conexión de Drive guardada en este navegador.'); renderShell(); });
-  document.getElementById('changeMyPasswordBtn')?.addEventListener('click',changeMyPassword);
-  document.querySelectorAll('[data-admin-reset-password]').forEach(btn=>btn.addEventListener('click',()=>openAdminResetPassword(btn.dataset.adminResetPassword, btn.dataset.email || '')));
   document.querySelectorAll('[data-import]').forEach(btn=>btn.addEventListener('click',()=>runImport(btn.dataset.import)));
 }
 
@@ -1713,25 +1684,6 @@ function openActivityModal(kind='support', ticket=null, preset={}){
     }
     msg.innerHTML='<div class="success">Actividad creada.</div>'; toast('Actividad creada en el cronograma.'); setTimeout(async()=>{ clearModal(); await loadActivities(); renderShell(); },650);
   });
-}
-function openAdminResetPassword(profileId, email){
-  if(!isAdmin()){ toast('Solo administradores pueden cambiar claves de otros usuarios.'); return; }
-  modal(h`<div class="modal-head"><div><span class="tag">Seguridad</span><h2>Cambiar contraseña</h2><p class="muted">Usuario: <strong>${safe(email)}</strong></p></div><button class="close-btn" data-close>×</button></div><form id="adminResetPasswordForm"><input type="hidden" name="profile_id" value="${safe(profileId)}"><input type="hidden" name="email" value="${safe(email)}"><div class="field"><label>Nueva contraseña</label><input name="password" type="text" required value="1234567"></div><div id="adminResetMsg"></div><button class="btn btn-primary btn-block" type="submit">Cambiar contraseña</button><p class="help-text">Requiere tener desplegada la Edge Function <strong>admin-users</strong> con la variable <strong>SUPABASE_SERVICE_ROLE_KEY</strong>.</p></form>`);
-  document.getElementById('adminResetPasswordForm')?.addEventListener('submit',adminResetPassword);
-}
-async function adminResetPassword(e){
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  const body = Object.fromEntries(fd.entries());
-  const msg = document.getElementById('adminResetMsg');
-  if((body.password||'').length < 7){ msg.innerHTML = '<div class="warning">La contraseña debe tener al menos 7 caracteres.</div>'; return; }
-  msg.innerHTML = '<div class="warning">Actualizando contraseña…</div>';
-  const { data: session } = await supabase.auth.getSession();
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-users`, { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${session.session?.access_token||''}` }, body: JSON.stringify({ action:'reset_password', ...body }) }).catch(err=>({ ok:false, json:async()=>({ error:err.message }) }));
-  const payload = await res.json().catch(()=>({ error:'Respuesta no válida' }));
-  if(!res.ok || payload.error){ msg.innerHTML=`<div class="error">${safe(payload.error || 'No fue posible cambiar la contraseña.')}</div>`; return; }
-  msg.innerHTML='<div class="success">Contraseña actualizada.</div>';
-  toast('Contraseña actualizada.');
 }
 function openUserModal(){
   modal(h`<div class="modal-head"><div><span class="tag">Usuarios</span><h2>Crear usuario</h2><p class="muted">Usa correo institucional. El rol determina módulos y permisos.</p></div><button class="close-btn" data-close>×</button></div><form id="userForm"><div class="field"><label>Correo</label><input name="email" type="email" required placeholder="usuario@sanpedro-valle.gov.co"></div><div class="field"><label>Nombre completo</label><input name="full_name" required></div><div class="form-grid"><div class="field"><label>Rol</label><select name="role_code"><option value="requester">Funcionario solicitante</option><option value="communication_agent">Comunicaciones</option><option value="tic_admin">Administrador TIC</option><option value="secretary_admin">Secretario General</option><option value="super_admin">Super Admin</option></select></div><div class="field"><label>Equipo</label><select name="team_code"><option value="">Sin equipo</option><option value="TIC">TIC</option><option value="COM">Comunicaciones</option></select></div></div><div class="field"><label>Contraseña temporal</label><input name="password" type="text" placeholder="Opcional"></div><div id="userMsg"></div><button class="btn btn-primary btn-block" type="submit">Crear / actualizar usuario</button></form>`);
