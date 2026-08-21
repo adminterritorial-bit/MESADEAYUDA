@@ -1,11 +1,11 @@
 (() => {
 'use strict';
 console.info('Mesa de Ayuda TIC');
-if (window.__MESA_TIC_APP_V4_8_20_LOADED__) {
+if (window.__MESA_TIC_APP_V4_8_21_LOADED__) {
   console.warn('Mesa de Ayuda TIC: app.js ya fue cargado. Se evita inicialización duplicada.');
   return;
 }
-window.__MESA_TIC_APP_V4_8_20_LOADED__ = true;
+window.__MESA_TIC_APP_V4_8_21_LOADED__ = true;
 
 const SUPABASE_URL = 'https://jppykxqsxayzypzdbnqd.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_CH1hn5LpS3zWPdDWqiM4jg_F7OuK7Ry';
@@ -15,7 +15,13 @@ const APP_VERSION = 'Mesa de Ayuda TIC';
 const app = document.getElementById('app');
 const modalRoot = document.getElementById('modalRoot');
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    flowType: 'pkce',
+    storageKey: 'mesa_tic_supabase_auth'
+  }
 });
 
 function oauthRedirectUrl(){
@@ -29,28 +35,75 @@ function cleanOAuthUrl(){
   try{
     const url = new URL(window.location.href);
     ['code','error','error_code','error_description','state'].forEach(k=>url.searchParams.delete(k));
-    window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : '') + (url.hash ? url.hash : ''));
+    url.hash = '';
+    const clean = url.pathname + (url.search ? url.search : '');
+    window.history.replaceState({}, document.title, clean || '/');
   }catch(_){ /* sin bloqueo */ }
 }
-async function finishOAuthRedirectIfNeeded(){
+function oauthParams(){
   const url = new URL(window.location.href);
-  const oauthError = url.searchParams.get('error') || url.searchParams.get('error_code');
-  const oauthErrorDescription = url.searchParams.get('error_description');
-  const code = url.searchParams.get('code');
-  if(oauthError){
-    sessionStorage.setItem('mesa_tic_oauth_error', oauthErrorDescription || oauthError);
+  const hash = new URLSearchParams(String(window.location.hash || '').replace(/^#/, ''));
+  return {
+    code: url.searchParams.get('code'),
+    searchError: url.searchParams.get('error') || url.searchParams.get('error_code'),
+    searchErrorDescription: url.searchParams.get('error_description'),
+    hashAccessToken: hash.get('access_token'),
+    hashRefreshToken: hash.get('refresh_token'),
+    hashError: hash.get('error') || hash.get('error_code'),
+    hashErrorDescription: hash.get('error_description')
+  };
+}
+async function waitForAuthSession(ms=5200){
+  const start = Date.now();
+  while(Date.now() - start < ms){
+    const { data } = await supabase.auth.getSession();
+    if(data?.session) return data.session;
+    await new Promise(resolve=>setTimeout(resolve,180));
+  }
+  const { data } = await supabase.auth.getSession();
+  return data?.session || null;
+}
+async function finishOAuthRedirectIfNeeded(){
+  const p = oauthParams();
+  const hasCallback = !!(p.code || p.hashAccessToken || p.hashRefreshToken || p.searchError || p.hashError);
+  if(!hasCallback) return null;
+
+  renderSoftLoading('Validando acceso con Google…', 'Estamos cerrando la autenticación institucional con Supabase.');
+
+  const errorText = p.searchErrorDescription || p.searchError || p.hashErrorDescription || p.hashError;
+  if(errorText){
+    sessionStorage.setItem('mesa_tic_oauth_error', errorText);
     cleanOAuthUrl();
     return null;
   }
-  if(!code) return null;
-  renderSoftLoading('Validando acceso con Google…', 'Estamos cerrando la autenticación institucional con Supabase.');
-  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-  cleanOAuthUrl();
-  if(error){
-    sessionStorage.setItem('mesa_tic_oauth_error', error.message || 'No se pudo completar el inicio con Google.');
-    return null;
+
+  if(p.code){
+    const { data, error } = await supabase.auth.exchangeCodeForSession(p.code);
+    if(error){
+      sessionStorage.setItem('mesa_tic_oauth_error', `Google volvió a la Mesa, pero Supabase no pudo crear sesión: ${error.message || error}`);
+      cleanOAuthUrl();
+      return null;
+    }
+    const session = data?.session || await waitForAuthSession();
+    cleanOAuthUrl();
+    if(!session){
+      sessionStorage.setItem('mesa_tic_oauth_error', 'Google volvió a la Mesa, pero no quedó sesión activa. Revisa URL Configuration de Supabase y vuelve a intentar.');
+      return null;
+    }
+    return session;
   }
-  return data?.session || null;
+
+  // Compatibilidad con flujos que regresan con tokens en el hash (#access_token).
+  if(p.hashAccessToken || p.hashRefreshToken){
+    const session = await waitForAuthSession();
+    cleanOAuthUrl();
+    if(!session){
+      sessionStorage.setItem('mesa_tic_oauth_error', 'Google devolvió tokens, pero el navegador no logró guardarlos como sesión. Cierra pestañas antiguas, limpia caché de la Mesa e intenta de nuevo.');
+    }
+    return session;
+  }
+
+  return null;
 }
 
 const state = {
@@ -460,9 +513,9 @@ async function guardedBoot(){
 async function init(){
   ['click','keydown','touchstart'].forEach(evt=>document.addEventListener(evt, unlockNotificationSound, { once:true, passive:true }));
   if(!window.supabase){ renderFatal('No cargó la librería de Supabase. Revisa la conexión a internet.'); return; }
-  await finishOAuthRedirectIfNeeded();
+  const callbackSession = await finishOAuthRedirectIfNeeded();
   const { data } = await supabase.auth.getSession();
-  state.session = data.session; state.user = data.session?.user ?? null;
+  state.session = callbackSession || data.session; state.user = state.session?.user ?? null;
   state.pendingTicketId = urlTicketId();
   supabase.auth.onAuthStateChange((event, session)=>{
     state.session=session; state.user=session?.user ?? null;
@@ -536,7 +589,7 @@ function renderLogin(){
   if(oauthMessage){
     sessionStorage.removeItem('mesa_tic_oauth_error');
     const msg = document.getElementById('loginMessage');
-    if(msg) msg.innerHTML = `<div class="error">${safe(oauthMessage)}</div>`;
+    if(msg) msg.innerHTML = `<div class="error"><strong>No se completó Google:</strong> ${safe(oauthMessage)}</div>`;
   }
 }
 async function handleLogin(e){
@@ -551,14 +604,19 @@ async function handleLogin(e){
 async function handleGoogleLogin(){
   const msg = document.getElementById('loginMessage');
   msg.innerHTML = '<div class="warning">Abriendo Google institucional…</div>';
-  const { error } = await supabase.auth.signInWithOAuth({
+  const redirectTo = oauthRedirectUrl();
+  sessionStorage.setItem('mesa_tic_oauth_started_at', String(Date.now()));
+  sessionStorage.setItem('mesa_tic_oauth_redirect_to', redirectTo);
+  const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: oauthRedirectUrl(),
+      redirectTo,
+      scopes: 'openid email profile',
       queryParams: { hd: 'sanpedro-valle.gov.co', prompt: 'select_account' }
     }
   });
   if(error) msg.innerHTML = `<div class="error">${safe(error.message)}</div>`;
+  else if(data?.url) window.location.href = data.url;
 }
 async function handleReset(){
   const email = document.getElementById('email').value.trim().toLowerCase();
