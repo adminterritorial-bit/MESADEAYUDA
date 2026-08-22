@@ -1,9 +1,10 @@
-const CACHE_NAME = 'mesa-tic-v4-8-20-shell';
+const CACHE_NAME = 'mesa-tic-v4-9-0-shell';
 const CORE_ASSETS = [
   './',
   './index.html',
-  './app.css?v=4.8.21',
-  './app.js?v=4.8.21',
+  './app.css?v=4.9.0',
+  './config.js?v=4.9.0',
+  './app.js?v=4.9.0',
   './site.webmanifest',
   './assets/app-icon-192.png',
   './assets/app-icon-512.png',
@@ -11,6 +12,10 @@ const CORE_ASSETS = [
   './assets/favicon.ico',
   './assets/loader-hourglass.gif',
   './assets/notification-soft.mp3'
+  ,'./assets/ui-icons/role-funcionario.png'
+  ,'./assets/ui-icons/role-comunicaciones.png'
+  ,'./assets/ui-icons/role-cio-tic.png'
+  ,'./assets/ui-icons/role-secretario-general.png'
 ];
 
 self.addEventListener('install', event => {

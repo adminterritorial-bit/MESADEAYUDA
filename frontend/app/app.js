@@ -1,15 +1,14 @@
 (() => {
 'use strict';
 console.info('Mesa de Ayuda TIC');
-if (window.__MESA_TIC_APP_V4_8_14_LOADED__) {
+if (window.__MESA_TIC_APP_V4_9_LOADED__) {
   console.warn('Mesa de Ayuda TIC: app.js ya fue cargado. Se evita inicialización duplicada.');
   return;
 }
-window.__MESA_TIC_APP_V4_8_14_LOADED__ = true;
+window.__MESA_TIC_APP_V4_9_LOADED__ = true;
 
 const SUPABASE_URL = 'https://jppykxqsxayzypzdbnqd.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_CH1hn5LpS3zWPdDWqiM4jg_F7OuK7Ry';
-const DRIVE_UPLOAD_URL_STORAGE_KEY = 'mesa_tic_drive_upload_webapp_url';
 const APP_VERSION = 'Mesa de Ayuda TIC';
 
 const app = document.getElementById('app');
@@ -50,7 +49,8 @@ const state = {
   notificationBaselineReady: false,
   lastUnreadNotificationIds: new Set(),
   notificationPoller: null,
-  notificationSoundUnlocked: false
+  notificationSoundUnlocked: false,
+  driveUploadUrl: ''
 };
 
 const roleLabels = {
@@ -315,13 +315,24 @@ function ticketDirectLink(ticketId){
 }
 
 function driveUploadWebAppUrl(){
-  return String(window.MESA_TIC_UPLOAD_WEBAPP_URL || localStorage.getItem(DRIVE_UPLOAD_URL_STORAGE_KEY) || '').trim().replace(/\/$/, '');
+  return String(state.driveUploadUrl || window.MESA_TIC_UPLOAD_WEBAPP_URL || '').trim().replace(/\/$/, '');
 }
-function saveDriveUploadWebAppUrl(url){
-  const clean = String(url || '').trim().replace(/\/$/, '');
-  if(clean) localStorage.setItem(DRIVE_UPLOAD_URL_STORAGE_KEY, clean);
-  else localStorage.removeItem(DRIVE_UPLOAD_URL_STORAGE_KEY);
-  return clean;
+async function loadDriveSetting(){
+  const { data, error } = await supabase.from('app_settings').select('value').eq('key','drive_upload_webapp_url').maybeSingle();
+  if(!error && data?.value) state.driveUploadUrl = String(data.value).trim().replace(/\/$/, '');
+  else state.driveUploadUrl = String(window.MESA_TIC_UPLOAD_WEBAPP_URL || '').trim().replace(/\/$/, '');
+}
+async function invokeProtectedFunction(slug, body){
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token || '';
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/${slug}`, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${token}`, 'apikey':SUPABASE_PUBLISHABLE_KEY },
+    body:JSON.stringify(body)
+  });
+  const payload = await res.json().catch(()=>({ error:'Respuesta no válida del servidor.' }));
+  if(!res.ok || payload.error) throw new Error(payload.error || 'No fue posible completar la operación.');
+  return payload;
 }
 function uploadEnabled(){ return Boolean(driveUploadWebAppUrl()); }
 function renderUploadField(name='support_files', label='¿Enviar archivo de soporte?', hint='Puedes adjuntar PDF, Word, Excel, imágenes o insumos. Se guardará en Google Drive y Supabase solo conservará la ruta.'){ 
@@ -442,6 +453,7 @@ async function boot(){
   if(!state.user){ renderLogin(); return; }
   if(!document.querySelector('.shell') && !document.querySelector('.drawer')) renderSoftLoading();
   try{
+    await loadDriveSetting();
     const { data, error } = await supabase.rpc('app_bootstrap');
     if(error) throw error;
     state.profile = data?.profile ?? null;
@@ -469,31 +481,47 @@ function renderLogin(){
         <div class="login-hero-content">
           <img class="login-logo" src="assets/logo-san-pedro-crop.png" alt="Alcaldía de San Pedro">
           <h1>Mesa de Ayuda TIC</h1>
-          <p>Acceso institucional para radicar solicitudes, consultar el cronograma compartido y gestionar el trabajo de TIC y Comunicaciones según permisos reales.</p>
+          <p>Un solo lugar para solicitar soporte, seguir cada radicado y reservar espacios con TIC o Comunicaciones.</p>
           <div class="login-badges">
-            <span class="login-badge">Login obligatorio</span>
-            <span class="login-badge">Sin datos simulados</span>
-            <span class="login-badge">Cronograma compartido</span>
-            <span class="login-badge">Roles por Supabase</span>
+            <span class="login-badge">Solicitudes con seguimiento</span>
+            <span class="login-badge">Agenda compartida</span>
+            <span class="login-badge">Acceso institucional seguro</span>
           </div>
         </div>
       </div>
       <div class="login-panel">
         <form class="login-card" id="loginForm">
           <span class="tag">Alcaldía de San Pedro</span>
-          <h2>Iniciar sesión</h2>
-          <p>Ingresa con tu correo institucional autorizado.</p>
+          <h2>Bienvenido</h2>
+          <p>Ingresa con tu correo institucional y elige el método que prefieras.</p>
+          <button class="btn google-login-btn btn-block" id="googleLoginBtn" type="button"><span class="google-mark" aria-hidden="true">G</span>Continuar con Google</button>
+          <div class="login-divider"><span>o con contraseña</span></div>
           <div class="field"><label for="email">Correo</label><input id="email" type="email" required autocomplete="email" placeholder="usuario@sanpedro-valle.gov.co"></div>
-          <div class="field"><label for="password">Contraseña</label><input id="password" type="password" required autocomplete="current-password" placeholder="Contraseña"></div>
+          <div class="field"><label for="password">Contraseña</label><div class="password-field"><input id="password" type="password" required autocomplete="current-password" placeholder="Contraseña"><button type="button" id="togglePassword" aria-label="Mostrar contraseña">Ver</button></div></div>
           <div id="loginMessage"></div>
           <button class="btn btn-primary btn-block" type="submit">Entrar a la Mesa</button>
           <button class="btn btn-secondary btn-block" id="resetBtn" type="button">Recuperar contraseña</button>
-          <p class="help-text">La aplicación se desbloquea únicamente después de cargar perfil, rol y permisos desde Supabase.</p>
+          <p class="help-text">Google y contraseña usan el mismo perfil cuando el correo institucional coincide.</p>
         </form>
       </div>
     </section>`;
   document.getElementById('loginForm').addEventListener('submit', handleLogin);
   document.getElementById('resetBtn').addEventListener('click', handleReset);
+  document.getElementById('googleLoginBtn').addEventListener('click', handleGoogleLogin);
+  document.getElementById('togglePassword').addEventListener('click',()=>{
+    const input=document.getElementById('password'); const button=document.getElementById('togglePassword');
+    input.type=input.type==='password'?'text':'password'; button.textContent=input.type==='password'?'Ver':'Ocultar';
+  });
+}
+async function handleGoogleLogin(){
+  const msg = document.getElementById('loginMessage');
+  msg.innerHTML = '<div class="warning">Abriendo acceso institucional de Google…</div>';
+  const redirectTo = `${location.origin}${location.pathname}`;
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider:'google',
+    options:{ redirectTo, queryParams:{ hd:'sanpedro-valle.gov.co', prompt:'select_account' } }
+  });
+  if(error) msg.innerHTML = `<div class="error">${safe(error.message)}</div>`;
 }
 async function handleLogin(e){
   e.preventDefault();
@@ -670,7 +698,8 @@ function bindShell(){
   document.getElementById('globalSearchInput')?.addEventListener('input',e=>{ state.filter.globalQ=e.target.value; });
   document.getElementById('markNotificationsRead')?.addEventListener('click',markAllNotificationsRead);
   document.getElementById('refreshEmailQueue')?.addEventListener('click',async()=>{ await loadEmailQueue(); renderShell(); toast('Cola de correos actualizada.'); });
-  document.getElementById('saveDriveUploadUrl')?.addEventListener('click',()=>{ const v = document.getElementById('driveUploadUrlInput')?.value || ''; saveDriveUploadWebAppUrl(v); toast('Conexión de Drive guardada en este navegador.'); renderShell(); });
+  document.getElementById('unlockDriveSettings')?.addEventListener('click',openDriveConnectionModal);
+  document.getElementById('changeOwnPassword')?.addEventListener('click',openOwnPasswordModal);
 }
 async function setView(view){
   if(!hasModule(view)){ toast('Este módulo no está habilitado para tu usuario.'); return; }
@@ -1026,7 +1055,7 @@ function renderSchedule(){
       <div>
         <span class="tag">Agenda colaborativa</span>
         <h2>Cronograma institucional</h2>
-        <p>Agenda compartida estilo Teams para Administrador TIC, Comunicador Social 1 y Comunicador Social 2. Todos los usuarios autenticados pueden registrar actividades reales.</p>
+        <p>Selecciona un día y separa un espacio con el Administrador TIC, Andi Potes o Jhon Zuleta. La actividad queda visible en la agenda institucional.</p>
       </div>
       <div class="schedule-hero-actions">
         <button class="btn btn-secondary" data-new-activity="support">${icon('plus')} Crear actividad</button>
@@ -1186,18 +1215,18 @@ function renderReports(){
     </div>`;
 }
 function renderUsers(){
-  return h`<div class="grid grid-main"><div class="card"><div class="section-title"><div><h2>Usuarios institucionales</h2><p>Personas activas en la Mesa. Los roles se aplican desde Supabase.</p></div><button class="btn btn-primary btn-small" id="openUserModal">Crear usuario</button></div>${renderUsersTable()}</div><div class="card"><div class="section-title"><div><h2>Mapa de permisos</h2><p>Distribución visual del ecosistema.</p></div></div>${renderRoleMap()}</div></div>`;
+  return h`<div class="users-workspace"><div class="card users-card"><div class="section-title"><div><h2>Usuarios institucionales</h2><p>Crea perfiles y gestiona contraseñas sin salir de la Mesa.</p></div><button class="btn btn-primary btn-small" id="openUserModal">Crear usuario</button></div>${renderUsersTable()}</div><div class="card permission-map-card"><div class="section-title"><div><h2>Mapa de permisos</h2><p>Qué puede hacer cada rol, explicado de forma clara.</p></div></div>${renderRoleMap()}</div></div>`;
 }
 function renderUsersTable(){
   if(!state.profiles.length) return emptyState('Sin usuarios visibles','Cuando se creen usuarios, aparecerán aquí.');
-  return `<div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Equipo</th><th>Estado</th></tr></thead><tbody>${state.profiles.map(p=>{ const role=state.roleRows.find(r=>r.profile_id===p.id)?.role_code || 'Sin rol'; const team=state.teamRows.find(t=>t.profile_id===p.id)?.team_code || ''; return `<tr><td><strong>${safe(p.full_name||'Sin nombre')}</strong></td><td>${safe(p.email)}</td><td>${safe(roleLabels[role]||role)}</td><td>${team?`<span class="pill ${team==='COM'?'com':'tic'}">${safe(team)}</span>`:'<span class="muted">Sin equipo</span>'}</td><td><span class="pill ${p.status==='active'?'green':'amber'}">${safe(p.status)}</span></td></tr>`; }).join('')}</tbody></table></div>`;
+  return `<div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Equipo</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${state.profiles.map(p=>{ const role=state.roleRows.find(r=>r.profile_id===p.id)?.role_code || 'Sin rol'; const team=state.teamRows.find(t=>t.profile_id===p.id)?.team_code || ''; return `<tr><td><strong>${safe(p.full_name||'Sin nombre')}</strong></td><td>${safe(p.email)}</td><td>${safe(roleLabels[role]||role)}</td><td>${team?`<span class="pill ${team==='COM'?'com':'tic'}">${safe(team)}</span>`:'<span class="muted">Sin equipo</span>'}</td><td><span class="pill ${p.status==='active'?'green':'amber'}">${safe(p.status)}</span></td><td><button class="btn btn-soft btn-small" data-password-user="${safe(p.id)}" data-password-email="${safe(p.email)}">Cambiar clave</button></td></tr>`; }).join('')}</tbody></table></div>`;
 }
 function renderRoleMap(){
   const rows = [
-    {title:'Funcionario', desc:'Radicar y consultar propias', asset:'role-funcionario', accent:'funcionario'},
-    {title:'Comunicaciones', desc:'Publicaciones, cubrimientos y agenda COM', asset:'role-comunicaciones', accent:'comunicaciones'},
-    {title:'CIO TIC', desc:'Vista general y operación TIC/COM', asset:'role-cio-tic', accent:'cio'},
-    {title:'Secretario General', desc:'Administración institucional', asset:'role-secretario-general', accent:'secretario'}
+    {title:'Funcionario solicitante', desc:'Radica solicitudes, consulta las propias y separa espacios en el cronograma con TIC o Comunicaciones.', asset:'role-funcionario', accent:'funcionario'},
+    {title:'Comunicaciones', desc:'Gestiona publicaciones y cubrimientos, además de su agenda asignada.', asset:'role-comunicaciones', accent:'comunicaciones'},
+    {title:'Administrador TIC', desc:'Opera solicitudes TIC, administra usuarios y coordina el cronograma institucional.', asset:'role-cio-tic', accent:'cio'},
+    {title:'Secretario General', desc:'Supervisa la operación institucional y el seguimiento general.', asset:'role-secretario-general', accent:'secretario'}
   ];
   return `<div class="role-map-grid">${rows.map(r=>`<div class="role-card ${safe(r.accent)}"><div class="role-card-media">${assetIcon(r.asset, r.title, 'role-card-img')}</div><div class="role-card-body"><span class="role-kicker">Mapa de permisos</span><strong>${safe(r.title)}</strong><p>${safe(r.desc)}</p></div></div>`).join('')}</div>`;
 }
@@ -1218,7 +1247,10 @@ function renderSettings(){
       <div class="ios-steps"><div><strong>iPhone</strong><p>Safari → Compartir → Agregar a pantalla de inicio → Abrir como “Mesa TIC”.</p></div><div><strong>Android</strong><p>Chrome → Menú ⋮ → Instalar app / Agregar a pantalla principal.</p></div></div>
     </div>
   </div>
-  <div class="grid grid-2"><div class="card"><div class="section-title"><div><h2>Servicios activos</h2><p>Catálogo real cargado desde Supabase.</p></div></div>${state.services.length?`<div class="compact-list">${state.services.map(s=>`<div class="compact-item"><div><strong>${safe(s.name)}</strong><div class="ticket-meta">${safe(s.description||'')}</div></div><span class="pill ${s.team_code==='COM'?'com':'tic'}">${safe(s.team_code)}</span></div>`).join('')}</div>`:emptyState('Sin servicios','Ejecuta el SQL base y el patch v4.8.11 para cargar el catálogo mínimo.')}</div><div class="card"><div class="section-title"><div><h2>Recursos de cronograma</h2><p>Nombres reales de Administrador TIC y Comunicadores.</p></div><button class="btn btn-soft btn-small" data-jump="launch_check">Checklist</button></div>${state.resources.length?`<div class="compact-list">${state.resources.map(r=>`<div class="compact-item"><div><strong>${safe(r.name)}</strong><div class="ticket-meta">${safe(r.role_label)} · ${safe(r.code)}</div></div><span class="pill ${r.team_code==='COM'?'com':'tic'}">${safe(r.team_code)}</span></div>`).join('')}</div>`:emptyState('Sin recursos','No hay recursos configurados.')}</div></div><div class="card upload-config-card"><div class="section-title"><div><h2>Archivos en Google Drive</h2><p>Conecta el Web App de Apps Script para que los adjuntos se guarden en Drive y Supabase solo conserve la ruta.</p></div><span class="pill ${uploadUrl?'green':'amber'}">${uploadUrl?'Activo':'Pendiente'}</span></div><div class="field"><label>URL del Web App de Google Apps Script</label><input id="driveUploadUrlInput" value="${safe(uploadUrl)}" placeholder="https://script.google.com/macros/s/.../exec"></div><button class="btn btn-primary" id="saveDriveUploadUrl">Guardar conexión Drive</button><p class="help-text">Esta URL no es una clave. La seguridad real se valida con la sesión Supabase del usuario y la service_role key guardada dentro de Apps Script.</p></div><div class="card launch-inline">${renderLaunchChecklistInner()}</div>`;
+  <div class="grid grid-2"><div class="card"><div class="section-title"><div><h2>Servicios activos</h2><p>Catálogo real cargado desde Supabase.</p></div></div>${state.services.length?`<div class="compact-list">${state.services.map(s=>`<div class="compact-item"><div><strong>${safe(s.name)}</strong><div class="ticket-meta">${safe(s.description||'')}</div></div><span class="pill ${s.team_code==='COM'?'com':'tic'}">${safe(s.team_code)}</span></div>`).join('')}</div>`:emptyState('Sin servicios','No hay servicios activos.')}</div><div class="card"><div class="section-title"><div><h2>Recursos de cronograma</h2><p>Administrador TIC y comunicadores disponibles para asignación.</p></div><button class="btn btn-soft btn-small" data-jump="launch_check">Checklist</button></div>${state.resources.length?`<div class="compact-list">${state.resources.map(r=>`<div class="compact-item"><div><strong>${safe(r.name)}</strong><div class="ticket-meta">${safe(r.role_label)} · ${safe(r.code)}</div></div><span class="pill ${r.team_code==='COM'?'com':'tic'}">${safe(r.team_code)}</span></div>`).join('')}</div>`:emptyState('Sin recursos','No hay recursos configurados.')}</div></div>
+  <div class="grid grid-2 settings-security-grid"><div class="card upload-config-card"><div class="section-title"><div><h2>Conexión institucional de Drive</h2><p>La misma URL se usa en todos los navegadores, celulares y computadores.</p></div><span class="pill ${uploadUrl?'green':'amber'}">${uploadUrl?'Fija y activa':'Pendiente'}</span></div><div class="field"><label>Web App de Google Apps Script</label><input value="${safe(uploadUrl)}" readonly></div><button class="btn btn-soft" id="unlockDriveSettings">Desbloquear con PIN</button><p class="help-text">El cambio exige sesión administrativa y PIN. La configuración se guarda globalmente en Supabase.</p></div>
+  <div class="card password-config-card"><div class="section-title"><div><h2>Mi contraseña</h2><p>Actualiza la clave de tu cuenta administrativa desde la Mesa.</p></div><span class="pill green">Protegida</span></div><button class="btn btn-primary" id="changeOwnPassword">Cambiar mi contraseña</button><p class="help-text">La nueva contraseña se aplica también cuando ingresas por correo y contraseña. Google continúa enlazado al mismo perfil.</p></div></div>
+  <div class="card launch-inline">${renderLaunchChecklistInner()}</div>`;
 }
 
 
@@ -1233,7 +1265,7 @@ function launchCheckItems(){
     ['Responsables con nombre real', state.resources.length>=3 && genericNames.length===0, genericNames.length?'Aún hay nombres genéricos en cronograma. Ejecuta patch v4.7 o revisa roles COM/TIC.':'Cronograma muestra nombres propios.'],
     ['Servicios de Comunicaciones', state.services.some(s=>s.code==='advertising_design') && state.services.some(s=>s.code==='video_recording') && state.services.some(s=>s.code==='web_publication'), 'Diseño, campañas, video y publicaciones disponibles.'],
     ['Desarrollo web', state.services.some(s=>s.code==='web_development_request'), 'Servicio de desarrollo web cargado en catálogo.'],
-    ['Adjuntos Drive', uploadEnabled(), 'La URL del Web App de Apps Script para archivos está configurada en este navegador.'],
+    ['Adjuntos Drive', uploadEnabled(), 'La URL institucional del Web App está configurada globalmente.'],
     ['Bandejas por rol', state.modules.length>0, 'La navegación se construye desde permisos.'],
     ['Usuarios principales', roles.has('super_admin') || roles.has('secretary_admin') || state.profiles.length>0, 'Usuarios y roles visibles para administración.'],
     ['Cronograma activo', state.resources.length>=3, 'Tres recursos principales disponibles.'],
@@ -1280,8 +1312,10 @@ function bindView(){
   document.querySelectorAll('[data-activity-id]').forEach(el=>el.addEventListener('click',(e)=>{ e.stopPropagation(); openActivityDetail(el.dataset.activityId); }));
   document.querySelectorAll('[data-new-activity]').forEach(btn=>btn.addEventListener('click',(e)=>{ e.stopPropagation(); openActivityModal(btn.dataset.newActivity, null, { resource: btn.dataset.resource, date: btn.dataset.date, time: btn.dataset.time }); }));
   document.getElementById('openUserModal')?.addEventListener('click',openUserModal);
+  document.querySelectorAll('[data-password-user]').forEach(btn=>btn.addEventListener('click',()=>openAdminPasswordModal(btn.dataset.passwordUser, btn.dataset.passwordEmail)));
   document.getElementById('refreshEmailQueue')?.addEventListener('click',async()=>{ await loadEmailQueue(); renderShell(); toast('Cola de correos actualizada.'); });
-  document.getElementById('saveDriveUploadUrl')?.addEventListener('click',()=>{ const v = document.getElementById('driveUploadUrlInput')?.value || ''; saveDriveUploadWebAppUrl(v); toast('Conexión de Drive guardada en este navegador.'); renderShell(); });
+  document.getElementById('unlockDriveSettings')?.addEventListener('click',openDriveConnectionModal);
+  document.getElementById('changeOwnPassword')?.addEventListener('click',openOwnPasswordModal);
   document.querySelectorAll('[data-import]').forEach(btn=>btn.addEventListener('click',()=>runImport(btn.dataset.import)));
 }
 
@@ -1649,7 +1683,7 @@ function openActivityModal(kind='support', ticket=null, preset={}){
   modal(h`<div class="modal-head"><div><span class="tag">Cronograma colaborativo</span><h2>Crear actividad</h2><p class="muted">Se guardará como actividad real en Supabase y será visible para todos los usuarios autenticados.</p></div><button class="close-btn" data-close>×</button></div>
     <form id="activityForm" class="activity-form-pro">
       <div class="field"><label>Título de la actividad</label><input name="title" required maxlength="140" value="${safe(ticket?.title||'')}" placeholder="Ej. Cubrimiento entrega de ayudas"></div>
-      <div class="form-grid"><div class="field"><label>Responsable</label><select name="resource_code" required>${resourceOptions}</select></div><div class="field"><label>Tipo</label><select name="kind">${kindOptions.map(k=>`<option value="${k}" ${kind===k?'selected':''}>${kindLabels[k]}</option>`).join('')}</select></div></div>
+      <div class="form-grid"><div class="field"><label>Separar espacio con</label><select name="resource_code" required>${resourceOptions}</select></div><div class="field"><label>Tipo</label><select name="kind">${kindOptions.map(k=>`<option value="${k}" ${kind===k?'selected':''}>${kindLabels[k]}</option>`).join('')}</select></div></div>
       <div class="form-grid"><div class="field"><label>Inicio</label><input name="start_at" type="datetime-local" required value="${startValue}"></div><div class="field"><label>Fin</label><input name="end_at" type="datetime-local" required value="${endValue}"></div></div>
       <div class="field"><label>Lugar / canal</label><input name="location" placeholder="Alcaldía, barrio, enlace, oficina o canal"></div>
       <div class="field"><label>Detalle</label><textarea name="description" placeholder="Notas, requerimientos, piezas, equipos, responsable de apoyo o contexto"></textarea></div>
@@ -1685,17 +1719,53 @@ function openActivityModal(kind='support', ticket=null, preset={}){
     msg.innerHTML='<div class="success">Actividad creada.</div>'; toast('Actividad creada en el cronograma.'); setTimeout(async()=>{ clearModal(); await loadActivities(); renderShell(); },650);
   });
 }
+function passwordFormFields(){
+  return `<div class="field"><label>Nueva contraseña</label><div class="password-field"><input name="password" type="password" required minlength="8" maxlength="72" autocomplete="new-password"><button type="button" data-toggle-modal-password>Ver</button></div></div><div class="field"><label>Confirmar contraseña</label><input name="confirm_password" type="password" required minlength="8" maxlength="72" autocomplete="new-password"></div>`;
+}
+function bindModalPasswordToggle(){
+  modalRoot.querySelector('[data-toggle-modal-password]')?.addEventListener('click',(e)=>{
+    const input=modalRoot.querySelector('input[name="password"]');
+    input.type=input.type==='password'?'text':'password'; e.currentTarget.textContent=input.type==='password'?'Ver':'Ocultar';
+  });
+}
+function openOwnPasswordModal(){
+  modal(h`<div class="modal-head"><div><span class="tag">Seguridad</span><h2>Cambiar mi contraseña</h2><p class="muted">Cuenta: ${safe(state.user?.email || '')}</p></div><button class="close-btn" data-close>×</button></div><form id="ownPasswordForm">${passwordFormFields()}<div id="passwordMsg"></div><button class="btn btn-primary btn-block" type="submit">Guardar nueva contraseña</button></form>`);
+  bindModalPasswordToggle();
+  document.getElementById('ownPasswordForm').addEventListener('submit',async(e)=>{
+    e.preventDefault(); const fd=new FormData(e.target); const password=String(fd.get('password')||''); const confirm=String(fd.get('confirm_password')||''); const msg=document.getElementById('passwordMsg');
+    if(password!==confirm){ msg.innerHTML='<div class="error">Las contraseñas no coinciden.</div>'; return; }
+    msg.innerHTML='<div class="warning">Actualizando contraseña…</div>';
+    try{ await invokeProtectedFunction('admin-users',{ action:'change_own_password', password }); msg.innerHTML='<div class="success">Contraseña actualizada. Inicia sesión nuevamente con la nueva clave.</div>'; toast('Tu contraseña fue actualizada.'); setTimeout(()=>supabase.auth.signOut({ scope:'local' }),1100); }
+    catch(error){ msg.innerHTML=`<div class="error">${safe(error.message)}</div>`; }
+  });
+}
+function openAdminPasswordModal(userId,email){
+  modal(h`<div class="modal-head"><div><span class="tag">Gestión de usuarios</span><h2>Cambiar contraseña</h2><p class="muted">${safe(email || '')}</p></div><button class="close-btn" data-close>×</button></div><form id="adminPasswordForm">${passwordFormFields()}<div id="passwordMsg"></div><button class="btn btn-primary btn-block" type="submit">Aplicar contraseña</button></form>`);
+  bindModalPasswordToggle();
+  document.getElementById('adminPasswordForm').addEventListener('submit',async(e)=>{
+    e.preventDefault(); const fd=new FormData(e.target); const password=String(fd.get('password')||''); const confirm=String(fd.get('confirm_password')||''); const msg=document.getElementById('passwordMsg');
+    if(password!==confirm){ msg.innerHTML='<div class="error">Las contraseñas no coinciden.</div>'; return; }
+    msg.innerHTML='<div class="warning">Actualizando contraseña…</div>';
+    try{ await invokeProtectedFunction('admin-users',{ action:'reset_password', user_id:userId, password }); msg.innerHTML='<div class="success">Contraseña actualizada correctamente.</div>'; toast(`Contraseña actualizada para ${email}.`); if(userId===state.user?.id) setTimeout(()=>supabase.auth.signOut({ scope:'local' }),1100); else setTimeout(clearModal,850); }
+    catch(error){ msg.innerHTML=`<div class="error">${safe(error.message)}</div>`; }
+  });
+}
+function openDriveConnectionModal(){
+  modal(h`<div class="modal-head"><div><span class="tag">Conexión global</span><h2>Google Drive</h2><p class="muted">El cambio se aplicará en todos los dispositivos.</p></div><button class="close-btn" data-close>×</button></div><form id="driveSettingsForm"><div class="field"><label>URL del Web App</label><input name="url" type="url" required value="${safe(driveUploadWebAppUrl())}"></div><div class="field"><label>PIN de configuración</label><input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required autocomplete="off"></div><div id="driveSettingsMsg"></div><button class="btn btn-primary btn-block" type="submit">Guardar conexión global</button></form>`);
+  document.getElementById('driveSettingsForm').addEventListener('submit',async(e)=>{
+    e.preventDefault(); const fd=new FormData(e.target); const msg=document.getElementById('driveSettingsMsg'); msg.innerHTML='<div class="warning">Guardando conexión institucional…</div>';
+    try{ const result=await invokeProtectedFunction('drive-settings',{ url:fd.get('url'), pin:fd.get('pin') }); state.driveUploadUrl=result.url; msg.innerHTML='<div class="success">Conexión guardada para todos los dispositivos.</div>'; toast('Conexión global de Drive actualizada.'); setTimeout(()=>{ clearModal(); renderShell(); },850); }
+    catch(error){ msg.innerHTML=`<div class="error">${safe(error.message)}</div>`; }
+  });
+}
 function openUserModal(){
-  modal(h`<div class="modal-head"><div><span class="tag">Usuarios</span><h2>Crear usuario</h2><p class="muted">Usa correo institucional. El rol determina módulos y permisos.</p></div><button class="close-btn" data-close>×</button></div><form id="userForm"><div class="field"><label>Correo</label><input name="email" type="email" required placeholder="usuario@sanpedro-valle.gov.co"></div><div class="field"><label>Nombre completo</label><input name="full_name" required></div><div class="form-grid"><div class="field"><label>Rol</label><select name="role_code"><option value="requester">Funcionario solicitante</option><option value="communication_agent">Comunicaciones</option><option value="tic_admin">Administrador TIC</option><option value="secretary_admin">Secretario General</option><option value="super_admin">Super Admin</option></select></div><div class="field"><label>Equipo</label><select name="team_code"><option value="">Sin equipo</option><option value="TIC">TIC</option><option value="COM">Comunicaciones</option></select></div></div><div class="field"><label>Contraseña temporal</label><input name="password" type="text" placeholder="Opcional"></div><div id="userMsg"></div><button class="btn btn-primary btn-block" type="submit">Crear / actualizar usuario</button></form>`);
+  modal(h`<div class="modal-head"><div><span class="tag">Usuarios</span><h2>Crear usuario</h2><p class="muted">Usa correo institucional. El rol determina módulos y permisos.</p></div><button class="close-btn" data-close>×</button></div><form id="userForm"><div class="field"><label>Correo</label><input name="email" type="email" required placeholder="usuario@sanpedro-valle.gov.co"></div><div class="field"><label>Nombre completo</label><input name="full_name" required></div><div class="form-grid"><div class="field"><label>Rol</label><select name="role_code"><option value="requester">Funcionario solicitante</option><option value="communication_agent">Comunicaciones</option><option value="tic_admin">Administrador TIC</option><option value="secretary_admin">Secretario General</option><option value="super_admin">Super Admin</option></select></div><div class="field"><label>Equipo</label><select name="team_code"><option value="">Sin equipo</option><option value="TIC">TIC</option><option value="COM">Comunicaciones</option></select></div></div><div class="field"><label>Contraseña temporal</label><input name="password" type="password" minlength="8" maxlength="72" autocomplete="new-password" placeholder="Mínimo 8 caracteres"></div><div id="userMsg"></div><button class="btn btn-primary btn-block" type="submit">Crear / actualizar usuario</button></form>`);
   document.getElementById('userForm').addEventListener('submit',saveUser);
 }
 async function saveUser(e){
   e.preventDefault(); const fd=new FormData(e.target); const body=Object.fromEntries(fd.entries()); const msg=document.getElementById('userMsg'); msg.innerHTML='<div class="warning">Procesando usuario…</div>';
-  const { data: session } = await supabase.auth.getSession();
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-users`, { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${session.session?.access_token||''}` }, body: JSON.stringify({ action:'upsert_user', ...body }) }).catch(err=>({ ok:false, json:async()=>({ error:err.message }) }));
-  const payload = await res.json().catch(()=>({ error:'Respuesta no válida' }));
-  if(!res.ok || payload.error){ msg.innerHTML=`<div class="error">${safe(payload.error || 'No fue posible crear usuario.')}</div>`; return; }
-  msg.innerHTML='<div class="success">Usuario creado o actualizado.</div>'; toast('Usuario listo.'); await loadProfiles(); setTimeout(()=>{ clearModal(); renderShell(); },900);
+  try{ await invokeProtectedFunction('admin-users',{ action:'upsert_user', ...body }); msg.innerHTML='<div class="success">Usuario creado o actualizado.</div>'; toast('Usuario listo.'); await loadProfiles(); setTimeout(()=>{ clearModal(); renderShell(); },900); }
+  catch(error){ msg.innerHTML=`<div class="error">${safe(error.message || 'No fue posible crear usuario.')}</div>`; }
 }
 async function runImport(type){
   const input = document.querySelector(`[data-import-file="${type}"]`); const result=document.getElementById('importResult');

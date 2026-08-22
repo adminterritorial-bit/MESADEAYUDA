@@ -9,4 +9,4 @@
   Ejemplo:
   window.MESA_TIC_UPLOAD_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycb.../exec';
 */
-window.MESA_TIC_UPLOAD_WEBAPP_URL = window.MESA_TIC_UPLOAD_WEBAPP_URL || '';
+window.MESA_TIC_UPLOAD_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzZKy72_Jpl_uZZ2U1_PoKVRUYM01d7yxfoWOXM0BsulC88DPQTAnxyhwwyfRV0ipuRrA/exec';
