@@ -5,15 +5,12 @@ const cors = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
-const PIN_SHA256_ENV = 'DRIVE_SETTINGS_PIN_SHA256';
 
 function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
-}
-
-async function sha256(value: string) {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+  });
 }
 
 Deno.serve(async (req) => {
@@ -22,28 +19,53 @@ Deno.serve(async (req) => {
 
   const url = Deno.env.get('SUPABASE_URL');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!url || !serviceKey) return json({ error: 'Variables de entorno Supabase no configuradas' }, 500);
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+
+  if (!url || !serviceKey || !anonKey) {
+    return json({ error: 'Variables de entorno Supabase no configuradas' }, 500);
+  }
+
   const authHeader = req.headers.get('Authorization') ?? '';
   if (!authHeader.startsWith('Bearer ')) return json({ error: 'No autenticado' }, 401);
 
-  const admin = createClient(url, serviceKey);
-  const token = authHeader.replace('Bearer ', '');
+  const admin = createClient(url, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const token = authHeader.slice('Bearer '.length).trim();
   const { data: userData, error: userError } = await admin.auth.getUser(token);
   if (userError || !userData.user) return json({ error: 'Sesión inválida' }, 401);
 
   const callerId = userData.user.id;
-  const { data: allowed } = await admin.rpc('has_permission_for_user', {
+  const callerEmail = String(userData.user.email || '').trim().toLowerCase();
+  if (!callerEmail) return json({ error: 'La cuenta administrativa no tiene correo válido' }, 400);
+
+  const { data: allowed, error: permissionError } = await admin.rpc('has_permission_for_user', {
     p_user_id: callerId,
     p_permission: 'users.manage',
   }).maybeSingle();
-  if (!allowed) return json({ error: 'No autorizado para cambiar la conexión institucional' }, 403);
+
+  if (permissionError || !allowed) {
+    return json({ error: 'No autorizado para cambiar la conexión institucional' }, 403);
+  }
 
   const body = await req.json().catch(() => ({}));
-  const pinSha256 = String(Deno.env.get(PIN_SHA256_ENV) || '').trim().toLowerCase();
-  if (!/^[a-f0-9]{64}$/.test(pinSha256)) {
-    return json({ error: 'PIN institucional no configurado de forma segura' }, 500);
+  const password = String(body.password || '');
+  if (!password) return json({ error: 'Debes confirmar tu contraseña actual' }, 400);
+
+  const verifier = createClient(url, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const { error: passwordError } = await verifier.auth.signInWithPassword({
+    email: callerEmail,
+    password,
+  });
+
+  if (passwordError) {
+    console.warn('drive-settings reauthentication failed', { callerId });
+    return json({ error: 'La contraseña actual no es correcta' }, 403);
   }
-  if (await sha256(String(body.pin || '')) !== pinSha256) return json({ error: 'PIN incorrecto' }, 403);
 
   const value = String(body.url || '').trim().replace(/\/$/, '');
   if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(value)) {
@@ -56,6 +78,9 @@ Deno.serve(async (req) => {
     updated_by: callerId,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'key' });
+
   if (error) return json({ error: error.message }, 400);
+
+  console.info('drive-settings updated', { callerId });
   return json({ ok: true, url: value });
 });
