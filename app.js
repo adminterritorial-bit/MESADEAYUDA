@@ -229,6 +229,23 @@ function canManageRequests(){ return hasAnyRole(['super_admin','secretary_admin'
 function canManageSchedule(){ return Boolean(state.user && state.profile); }
 function isComms(){ return hasRole('communication_agent'); }
 function isAdmin(){ return hasAnyRole(['super_admin','secretary_admin','tic_admin']); }
+const userRoleLevel = { requester:10, communication_agent:20, tic_admin:30, secretary_admin:40, super_admin:50 };
+function roleCodesForProfile(profileId){ return state.roleRows.filter(r=>r.profile_id===profileId).map(r=>r.role_code).filter(Boolean); }
+function highestRoleLevelClient(codes){ return (codes||[]).reduce((max,code)=>Math.max(max,userRoleLevel[code]||0),0); }
+function currentRoleCodes(){ return state.roles.map(r=>r.code).filter(Boolean); }
+function canManageUserAccount(profileId){
+  if(!profileId || profileId===state.profile?.id) return false;
+  const callerLevel=highestRoleLevelClient(currentRoleCodes());
+  const targetLevel=highestRoleLevelClient(roleCodesForProfile(profileId));
+  return callerLevel===userRoleLevel.super_admin && targetLevel===userRoleLevel.super_admin ? true : callerLevel>targetLevel;
+}
+function creatableUserRoles(){
+  const callerLevel=highestRoleLevelClient(currentRoleCodes());
+  return Object.keys(userRoleLevel).filter(code=>{
+    const level=userRoleLevel[code];
+    return callerLevel===userRoleLevel.super_admin && level===userRoleLevel.super_admin ? true : callerLevel>level;
+  });
+}
 function toast(message,type='info'){
   let stack=document.querySelector('.toast-stack');
   if(!stack){ stack=document.createElement('div'); stack.className='toast-stack'; document.body.appendChild(stack); }
@@ -1227,7 +1244,17 @@ function renderUsers(){
 }
 function renderUsersTable(){
   if(!state.profiles.length) return emptyState('Sin usuarios visibles','Cuando se creen usuarios, aparecerán aquí.');
-  return `<div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Equipo</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${state.profiles.map(p=>{ const role=state.roleRows.find(r=>r.profile_id===p.id)?.role_code || 'Sin rol'; const team=state.teamRows.find(t=>t.profile_id===p.id)?.team_code || ''; return `<tr><td><strong>${safe(p.full_name||'Sin nombre')}</strong></td><td>${safe(p.email)}</td><td>${safe(roleLabels[role]||role)}</td><td>${team?`<span class="pill ${team==='COM'?'com':'tic'}">${safe(team)}</span>`:'<span class="muted">Sin equipo</span>'}</td><td><span class="pill ${p.status==='active'?'green':'amber'}">${safe(p.status)}</span></td><td><button class="btn btn-soft btn-small" data-password-user="${safe(p.id)}" data-password-email="${safe(p.email)}">Cambiar clave</button></td></tr>`; }).join('')}</tbody></table></div>`;
+  return `<div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Equipo</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${state.profiles.map(p=>{
+    const roles=roleCodesForProfile(p.id);
+    const roleText=roles.length?roles.map(role=>roleLabels[role]||role).join(' · '):'Sin rol';
+    const team=state.teamRows.find(t=>t.profile_id===p.id)?.team_code || '';
+    const action=p.id===state.profile?.id
+      ? '<span class="muted">Usa “Mi contraseña”</span>'
+      : canManageUserAccount(p.id)
+        ? `<button class="btn btn-soft btn-small" data-password-user="${safe(p.id)}" data-password-email="${safe(p.email)}">Cambiar clave</button>`
+        : '<span class="muted">Nivel protegido</span>';
+    return `<tr><td><strong>${safe(p.full_name||'Sin nombre')}</strong></td><td>${safe(p.email)}</td><td>${safe(roleText)}</td><td>${team?`<span class="pill ${team==='COM'?'com':'tic'}">${safe(team)}</span>`:'<span class="muted">Sin equipo</span>'}</td><td><span class="pill ${p.status==='active'?'green':'amber'}">${safe(p.status)}</span></td><td>${action}</td></tr>`;
+  }).join('')}</tbody></table></div>`;
 }
 function renderRoleMap(){
   const rows = [
@@ -1779,7 +1806,10 @@ function openDriveConnectionModal(){
   });
 }
 function openUserModal(){
-  modal(h`<div class="modal-head"><div><span class="tag">Usuarios</span><h2>Crear usuario</h2><p class="muted">Crea una cuenta institucional nueva. Si el correo ya existe, la Mesa no sobrescribirá esa cuenta.</p></div><button class="close-btn" data-close>×</button></div><form id="userForm"><div class="field"><label>Correo</label><input name="email" type="email" required autocomplete="off" placeholder="usuario@sanpedro-valle.gov.co"></div><div class="field"><label>Nombre completo</label><input name="full_name" required minlength="3" maxlength="160" autocomplete="off"></div><div class="form-grid"><div class="field"><label>Rol</label><select name="role_code"><option value="requester">Funcionario solicitante</option><option value="communication_agent">Comunicaciones</option><option value="tic_admin">Administrador TIC</option><option value="secretary_admin">Secretario General</option><option value="super_admin">Super Admin</option></select></div><div class="field"><label>Equipo</label><select name="team_code"><option value="">Sin equipo</option><option value="TIC">TIC</option><option value="COM">Comunicaciones</option></select></div></div><div class="field"><label>Contraseña temporal</label><input name="password" type="password" required minlength="12" maxlength="72" autocomplete="new-password" placeholder="Mínimo 12 caracteres"><small>Debe combinar al menos tres grupos entre mayúsculas, minúsculas, números y símbolos.</small></div><div id="userMsg"></div><button class="btn btn-primary btn-block" type="submit">Crear usuario</button></form>`);
+  const allowedRoles=creatableUserRoles();
+  const roleOptions=allowedRoles.map(code=>`<option value="${safe(code)}">${safe(roleLabels[code]||code)}</option>`).join('');
+  if(!roleOptions){ toast('Tu cuenta no puede crear usuarios con los permisos actuales.'); return; }
+  modal(h`<div class="modal-head"><div><span class="tag">Usuarios</span><h2>Crear usuario</h2><p class="muted">Crea una cuenta institucional nueva. Solo aparecen roles inferiores al nivel de tu cuenta; Super Admin puede administrar el nivel superior.</p></div><button class="close-btn" data-close>×</button></div><form id="userForm"><div class="field"><label>Correo</label><input name="email" type="email" required autocomplete="off" placeholder="usuario@sanpedro-valle.gov.co"></div><div class="field"><label>Nombre completo</label><input name="full_name" required minlength="3" maxlength="160" autocomplete="off"></div><div class="form-grid"><div class="field"><label>Rol</label><select name="role_code">${roleOptions}</select></div><div class="field"><label>Equipo</label><select name="team_code"><option value="">Sin equipo</option><option value="TIC">TIC</option><option value="COM">Comunicaciones</option></select></div></div><div class="field"><label>Contraseña temporal</label><input name="password" type="password" required minlength="12" maxlength="72" autocomplete="new-password" placeholder="Mínimo 12 caracteres"><small>Debe combinar al menos tres grupos entre mayúsculas, minúsculas, números y símbolos.</small></div><div id="userMsg"></div><button class="btn btn-primary btn-block" type="submit">Crear usuario</button></form>`);
   const roleSelect = document.querySelector('#userForm [name="role_code"]');
   const teamSelect = document.querySelector('#userForm [name="team_code"]');
   const syncTeamForRole = ()=>{
