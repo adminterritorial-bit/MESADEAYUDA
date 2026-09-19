@@ -23,7 +23,7 @@ function json(body: unknown, status = 200) {
   });
 }
 
-async function findUserByEmail(admin: ReturnType<typeof createClient>, email: string) {
+async function findUserByEmail(admin: any, email: string): Promise<any | null> {
   const perPage = 1000;
 
   for (let page = 1; page <= 10; page += 1) {
@@ -38,7 +38,7 @@ async function findUserByEmail(admin: ReturnType<typeof createClient>, email: st
   throw new Error('No fue posible completar la búsqueda de usuarios.');
 }
 
-async function getRoleCodes(admin: ReturnType<typeof createClient>, profileId: string) {
+async function getRoleCodes(admin: any, profileId: string): Promise<string[]> {
   const { data, error } = await admin
     .from('profile_roles')
     .select('role_code')
