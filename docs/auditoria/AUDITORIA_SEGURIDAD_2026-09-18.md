@@ -15,16 +15,16 @@ La aplicación no puede calificarse como “inhackeable”. Ningún sistema pued
    **Estado:** corregido en esta rama. Ahora el backend vuelve a resolver roles/equipos y valida ownership/acceso antes de guardar.
 
 2. **ALTO — PIN de configuración de Drive derivable fuera de línea.**  
-   El hash SHA-256 de un PIN de cuatro dígitos estaba versionado. Un espacio de 10.000 combinaciones puede probarse offline.  
-   **Estado:** retirado del código. El hash debe configurarse como secreto `DRIVE_SETTINGS_PIN_SHA256`.
+   El hash SHA-256 de un PIN de cuatro dígitos estaba versionado. Un espacio de 10.000 combinaciones podía probarse offline.  
+   **Estado:** corregido. El PIN y su hash fueron eliminados del modelo; `drive-settings` exige sesión autorizada y reautenticación con la contraseña actual del administrador.
 
-3. **ALTO — RLS real no verificable con los accesos conectados.**  
-   El frontend usa el proyecto Supabase `jppykxqsxayzypzdbnqd`, pero la conexión disponible no tiene permiso sobre ese proyecto. Por tanto no fue posible inspeccionar las políticas reales, Advisors, Auth users ni el esquema efectivo.  
-   **Estado:** pendiente de validación sobre el proyecto correcto. Se añadió `supabase/audit/security_audit.sql`.
+3. **ALTO — RLS y backend real.**  
+   El proyecto Supabase `jppykxqsxayzypzdbnqd` fue auditado directamente. Se revisaron usuarios, roles, equipos, policies, vistas, funciones privilegiadas y Advisors.  
+   **Estado:** corregido/endurecido. Se cerró ejecución anónima de funciones `SECURITY DEFINER`, se fijó `search_path`, se reforzó `admin_upsert_profile` y se movió el respaldo de hashes desde `public` al esquema privado.
 
-4. **ALTO — vistas críticas no están definidas en el repositorio.**  
-   El frontend consume `tickets_secure` y `schedule_activities_public`, pero sus definiciones no están versionadas aquí. Una vista PostgreSQL puede eludir RLS si no está configurada correctamente.  
-   **Estado:** pendiente de validar en base real; la auditoría SQL comprueba `security_invoker`.
+4. **ALTO — vistas críticas.**  
+   Se verificaron directamente `tickets_secure`, `schedule_activities_public` y `ticket_attachments_secure`.  
+   **Estado:** validado en producción; las tres usan `security_invoker=true`.
 
 5. **ALTO — rama `main` sin protección.**  
    GitHub reporta `protected: false` y cero rulesets.  
@@ -45,9 +45,9 @@ La aplicación no puede calificarse como “inhackeable”. Ningún sistema pued
 9. **MEDIO — tamaño de archivo confiaba en un número enviado por el cliente.**  
    **Estado:** corregido; se valida el tamaño de los bytes realmente decodificados y se bloquean tipos activos/ejecutables.
 
-10. **MEDIO — código fuente incompleto respecto a funcionalidades.**  
-    El frontend invoca `bulk-import`, pero no existe `supabase/functions/bulk-import` en este repositorio. También faltan migraciones fundacionales de varias tablas/RPC.  
-    **Estado:** pendiente; no se eliminó la función visible para no cambiar comportamiento.
+10. **ALTO — importación de usuarios heredada.**  
+    La función desplegada `bulk-import` generaba contraseñas débiles y podía sobrescribir la clave de cuentas existentes.  
+    **Estado:** corregido. El código se incorporó al repositorio, exige contraseña fuerte, límites de tamaño/filas y crea usuarios mediante el endpoint canónico `admin-users` sin sobrescribir cuentas. Los slugs legacy `super-action` y `hyper-task` responden 410.
 
 ## Usuarios y autorización
 
@@ -63,6 +63,7 @@ Equipos esperados:
 
 - `TIC`
 - `COM`
+- `FUNC` (no operativo)
 
 La Edge Function `admin-users` autentica al llamante y exige `users.manage` para administrar terceros. La creación/actualización de usuarios ahora rechaza roles o equipos fuera de catálogo. El cambio de contraseña propia pasa directamente por `supabase.auth.updateUser`, eliminando un uso innecesario de `service_role`.
 
@@ -113,18 +114,23 @@ El endpoint público de Google Apps Script tampoco es un secreto: debe asumirse 
 - `apps-script/Code.gs`: sintaxis JavaScript OK.
 - Cambios aislados en rama de auditoría; `main` no se modificó.
 
-## Pendientes antes de fusionar/desplegar
+## Estado previo al despliegue
 
-1. Conectar o conceder acceso al proyecto Supabase `jppykxqsxayzypzdbnqd`.
-2. Ejecutar `supabase/audit/security_audit.sql` y revisar resultados.
-3. Ejecutar Supabase Security y Performance Advisors sobre ese proyecto.
-4. Confirmar que `tickets_secure` y `schedule_activities_public` usan `security_invoker=true` o no eluden RLS.
-5. Revisar todas las policies de `profiles`, `profile_roles`, `profile_teams`, `tickets`, `ticket_messages`, `activities` y `knowledge_articles`.
-6. Configurar el secreto `DRIVE_SETTINGS_PIN_SHA256` antes de desplegar la Edge Function actualizada.
-7. Desplegar el nuevo `apps-script-drive/Code.gs` en el Web App institucional.
-8. Confirmar si `bulk-import` existe en Supabase; si existe, incorporar su código al repositorio y auditarlo. Si no existe, retirar o implementar esa función en una fase separada.
-9. Activar protección/ruleset de `main`.
-10. Confirmar que cualquier despliegue externo no conectado usa la raíz del repositorio y no `frontend/app/`.
+Completado:
+1. Acceso y auditoría del proyecto Supabase `jppykxqsxayzypzdbnqd`.
+2. Revisión de Security/Performance Advisors, policies, vistas, usuarios, roles y equipos.
+3. `security_invoker=true` verificado en las vistas expuestas críticas.
+4. Migración de hardening aplicada y versionada.
+5. `admin-users` desplegada en versión 4 con JWT obligatorio.
+6. `drive-settings` desplegada en versión 2 con reautenticación por contraseña.
+7. `bulk-import` desplegada en versión 2 y endpoints legacy neutralizados.
+8. Pruebas transaccionales de jerarquía/rol-equipo ejecutadas con rollback.
+
+Pendiente de plataforma/operación:
+- Activar protección/ruleset de `main` si la administración de GitHub lo permite.
+- Activar Leaked Password Protection en la configuración de Supabase Auth; el conector disponible no expone esa mutación.
+- Publicar la versión endurecida de `apps-script-drive/Code.gs` en Google Apps Script; no hay conector de Apps Script disponible en esta sesión.
+- Resolver los avisos de rendimiento (índices/RLS initplan) en una fase de optimización sin alterar el comportamiento funcional.
 
 ## Riesgo residual
 
@@ -183,3 +189,16 @@ Se añadió `supabase/audit/user_auth_audit.sql`. El reporte no expone hashes de
 - correos duplicados.
 
 Esta consulta debe ejecutarse en el proyecto Supabase real antes de declarar cerrado el componente de usuarios.
+
+
+## Actualización de despliegue — 18/09/2026
+
+- Respaldo de hashes de Auth: movido de `public` a `private`, permisos de `anon/authenticated` revocados.
+- Ejecución anónima de RPC `SECURITY DEFINER`: cerrada.
+- `set_updated_at` y `set_ticket_status_timestamps`: `search_path` fijado.
+- `admin-users`: versión 4 activa, `verify_jwt=true`.
+- `drive-settings`: versión 2 activa, `verify_jwt=true`, sin PIN compartido.
+- `bulk-import`: versión 2 activa, `verify_jwt=true`, sin contraseñas generadas débiles ni sobrescritura de usuarios.
+- `super-action` y `hyper-task`: endpoints heredados neutralizados con HTTP 410.
+- Prueba transaccional válida de `admin_upsert_profile`: aprobada con rollback.
+- Pruebas negativas: promoción de Secretario a Super Admin y asignación TIC a requester, ambas bloqueadas correctamente.
