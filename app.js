@@ -1727,8 +1727,16 @@ function openActivityModal(kind='support', ticket=null, preset={}){
     msg.innerHTML='<div class="success">Actividad creada.</div>'; toast('Actividad creada en el cronograma.'); setTimeout(async()=>{ clearModal(); await loadActivities(); renderShell(); },650);
   });
 }
+function validateNewPassword(password){
+  const value = String(password || '');
+  if(value.length < 12) return 'La contraseña debe tener mínimo 12 caracteres.';
+  if(value.length > 72) return 'La contraseña no puede superar 72 caracteres.';
+  const groups = [/[a-z]/.test(value), /[A-Z]/.test(value), /[0-9]/.test(value), /[^A-Za-z0-9]/.test(value)].filter(Boolean).length;
+  if(groups < 3) return 'Combina al menos tres grupos: minúsculas, mayúsculas, números y símbolos.';
+  return '';
+}
 function passwordFormFields(){
-  return `<div class="field"><label>Nueva contraseña</label><div class="password-field"><input name="password" type="password" required minlength="8" maxlength="72" autocomplete="new-password"><button type="button" data-toggle-modal-password>Ver</button></div></div><div class="field"><label>Confirmar contraseña</label><input name="confirm_password" type="password" required minlength="8" maxlength="72" autocomplete="new-password"></div>`;
+  return `<div class="field"><label>Nueva contraseña</label><div class="password-field"><input name="password" type="password" required minlength="12" maxlength="72" autocomplete="new-password"><button type="button" data-toggle-modal-password>Ver</button></div><small>Mínimo 12 caracteres y al menos tres grupos entre mayúsculas, minúsculas, números y símbolos.</small></div><div class="field"><label>Confirmar contraseña</label><input name="confirm_password" type="password" required minlength="12" maxlength="72" autocomplete="new-password"></div>`;
 }
 function bindModalPasswordToggle(){
   modalRoot.querySelector('[data-toggle-modal-password]')?.addEventListener('click',(e)=>{
@@ -1742,6 +1750,8 @@ function openOwnPasswordModal(){
   document.getElementById('ownPasswordForm').addEventListener('submit',async(e)=>{
     e.preventDefault(); const fd=new FormData(e.target); const password=String(fd.get('password')||''); const confirm=String(fd.get('confirm_password')||''); const msg=document.getElementById('passwordMsg');
     if(password!==confirm){ msg.innerHTML='<div class="error">Las contraseñas no coinciden.</div>'; return; }
+    const passwordError = validateNewPassword(password);
+    if(passwordError){ msg.innerHTML=`<div class="error">${safe(passwordError)}</div>`; return; }
     msg.innerHTML='<div class="warning">Actualizando contraseña…</div>';
     try{ const { error } = await supabase.auth.updateUser({ password }); if(error) throw error; msg.innerHTML='<div class="success">Contraseña actualizada. Inicia sesión nuevamente con la nueva clave.</div>'; toast('Tu contraseña fue actualizada.'); setTimeout(()=>supabase.auth.signOut({ scope:'local' }),1100); }
     catch(error){ msg.innerHTML=`<div class="error">${safe(error.message)}</div>`; }
@@ -1753,6 +1763,8 @@ function openAdminPasswordModal(userId,email){
   document.getElementById('adminPasswordForm').addEventListener('submit',async(e)=>{
     e.preventDefault(); const fd=new FormData(e.target); const password=String(fd.get('password')||''); const confirm=String(fd.get('confirm_password')||''); const msg=document.getElementById('passwordMsg');
     if(password!==confirm){ msg.innerHTML='<div class="error">Las contraseñas no coinciden.</div>'; return; }
+    const passwordError = validateNewPassword(password);
+    if(passwordError){ msg.innerHTML=`<div class="error">${safe(passwordError)}</div>`; return; }
     msg.innerHTML='<div class="warning">Actualizando contraseña…</div>';
     try{ await invokeProtectedFunction('admin-users',{ action:'reset_password', user_id:userId, password }); msg.innerHTML='<div class="success">Contraseña actualizada correctamente.</div>'; toast(`Contraseña actualizada para ${email}.`); if(userId===state.user?.id) setTimeout(()=>supabase.auth.signOut({ scope:'local' }),1100); else setTimeout(clearModal,850); }
     catch(error){ msg.innerHTML=`<div class="error">${safe(error.message)}</div>`; }
@@ -1767,13 +1779,28 @@ function openDriveConnectionModal(){
   });
 }
 function openUserModal(){
-  modal(h`<div class="modal-head"><div><span class="tag">Usuarios</span><h2>Crear usuario</h2><p class="muted">Usa correo institucional. El rol determina módulos y permisos.</p></div><button class="close-btn" data-close>×</button></div><form id="userForm"><div class="field"><label>Correo</label><input name="email" type="email" required placeholder="usuario@sanpedro-valle.gov.co"></div><div class="field"><label>Nombre completo</label><input name="full_name" required></div><div class="form-grid"><div class="field"><label>Rol</label><select name="role_code"><option value="requester">Funcionario solicitante</option><option value="communication_agent">Comunicaciones</option><option value="tic_admin">Administrador TIC</option><option value="secretary_admin">Secretario General</option><option value="super_admin">Super Admin</option></select></div><div class="field"><label>Equipo</label><select name="team_code"><option value="">Sin equipo</option><option value="TIC">TIC</option><option value="COM">Comunicaciones</option></select></div></div><div class="field"><label>Contraseña temporal</label><input name="password" type="password" minlength="8" maxlength="72" autocomplete="new-password" placeholder="Mínimo 8 caracteres"></div><div id="userMsg"></div><button class="btn btn-primary btn-block" type="submit">Crear / actualizar usuario</button></form>`);
+  modal(h`<div class="modal-head"><div><span class="tag">Usuarios</span><h2>Crear usuario</h2><p class="muted">Crea una cuenta institucional nueva. Si el correo ya existe, la Mesa no sobrescribirá esa cuenta.</p></div><button class="close-btn" data-close>×</button></div><form id="userForm"><div class="field"><label>Correo</label><input name="email" type="email" required autocomplete="off" placeholder="usuario@sanpedro-valle.gov.co"></div><div class="field"><label>Nombre completo</label><input name="full_name" required minlength="3" maxlength="160" autocomplete="off"></div><div class="form-grid"><div class="field"><label>Rol</label><select name="role_code"><option value="requester">Funcionario solicitante</option><option value="communication_agent">Comunicaciones</option><option value="tic_admin">Administrador TIC</option><option value="secretary_admin">Secretario General</option><option value="super_admin">Super Admin</option></select></div><div class="field"><label>Equipo</label><select name="team_code"><option value="">Sin equipo</option><option value="TIC">TIC</option><option value="COM">Comunicaciones</option></select></div></div><div class="field"><label>Contraseña temporal</label><input name="password" type="password" required minlength="12" maxlength="72" autocomplete="new-password" placeholder="Mínimo 12 caracteres"><small>Debe combinar al menos tres grupos entre mayúsculas, minúsculas, números y símbolos.</small></div><div id="userMsg"></div><button class="btn btn-primary btn-block" type="submit">Crear usuario</button></form>`);
   document.getElementById('userForm').addEventListener('submit',saveUser);
 }
 async function saveUser(e){
-  e.preventDefault(); const fd=new FormData(e.target); const body=Object.fromEntries(fd.entries()); const msg=document.getElementById('userMsg'); msg.innerHTML='<div class="warning">Procesando usuario…</div>';
-  try{ await invokeProtectedFunction('admin-users',{ action:'upsert_user', ...body }); msg.innerHTML='<div class="success">Usuario creado o actualizado.</div>'; toast('Usuario listo.'); await loadProfiles(); setTimeout(()=>{ clearModal(); renderShell(); },900); }
-  catch(error){ msg.innerHTML=`<div class="error">${safe(error.message || 'No fue posible crear usuario.')}</div>`; }
+  e.preventDefault();
+  const fd=new FormData(e.target);
+  const body=Object.fromEntries(fd.entries());
+  const msg=document.getElementById('userMsg');
+  const passwordError=validateNewPassword(body.password);
+  if(passwordError){ msg.innerHTML=`<div class="error">${safe(passwordError)}</div>`; return; }
+  if(body.role_code==='communication_agent' && body.team_code!=='COM'){ msg.innerHTML='<div class="error">El rol Comunicaciones debe pertenecer al equipo COM.</div>'; return; }
+  if(body.role_code==='tic_admin' && body.team_code!=='TIC'){ msg.innerHTML='<div class="error">El Administrador TIC debe pertenecer al equipo TIC.</div>'; return; }
+  msg.innerHTML='<div class="warning">Creando usuario institucional…</div>';
+  try{
+    await invokeProtectedFunction('admin-users',{ action:'create_user', ...body });
+    msg.innerHTML='<div class="success">Usuario creado correctamente.</div>';
+    toast('Usuario institucional creado.');
+    await loadProfiles();
+    setTimeout(()=>{ clearModal(); renderShell(); },900);
+  }catch(error){
+    msg.innerHTML=`<div class="error">${safe(error.message || 'No fue posible crear usuario.')}</div>`;
+  }
 }
 async function runImport(type){
   const input = document.querySelector(`[data-import-file="${type}"]`); const result=document.getElementById('importResult');
