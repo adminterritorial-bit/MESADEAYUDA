@@ -268,3 +268,19 @@ Resultado del Performance Advisor:
 - `auth_rls_initplan`: **17 → 0**.
 - FKs sin índice: **25 → 7** tras priorizar relaciones operativas.
 - Los avisos restantes de índices recién creados como `unused_index` no implican error; sus estadísticas de uso parten en cero inmediatamente después de crearlos.
+
+
+## Reparación Auth de usuarios históricos — 19/09/2026
+
+Se detectó que 21 cuentas habían sido recreadas con UUID y hash de contraseña distintos respecto al respaldo histórico del 21/08/2026. Esto explicaba que perfiles activos existieran correctamente mientras las credenciales antiguas ya no correspondían.
+
+Corrección aplicada:
+- identidades email confirmadas normalizadas a `email_verified=true`;
+- 20 cuentas recreadas que nunca habían iniciado sesión recuperaron su hash bcrypt histórico por coincidencia exacta de correo;
+- 1 cuenta recreada que sí había iniciado sesión posteriormente quedó intacta;
+- 3 cuentas que conservaron su UUID quedaron intactas;
+- 24/24 perfiles continúan `active`;
+- 0 usuarios Auth sin perfil;
+- 0 perfiles sin usuario Auth.
+
+No se expusieron ni almacenaron contraseñas en texto plano.
