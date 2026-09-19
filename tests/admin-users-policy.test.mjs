@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   canManageTarget,
+  highestRoleLevel,
   normalizeInstitutionalEmail,
   validateFullName,
   validatePassword,
@@ -67,17 +68,46 @@ test('UUID validation rejects arbitrary target identifiers', () => {
   assert.throws(() => validateUuid(''));
 });
 
-test('non-super-admin cannot manage a super-admin target', () => {
-  const result = canManageTarget({
-    callerRoles: ['tic_admin'],
-    targetRoles: ['super_admin'],
-  });
-  assert.equal(result.allowed, false);
+test('role hierarchy is ordered correctly', () => {
+  assert.equal(highestRoleLevel(['requester']), 10);
+  assert.equal(highestRoleLevel(['tic_admin', 'requester']), 30);
+  assert.equal(highestRoleLevel(['super_admin']), 50);
 });
 
-test('only super-admin can assign super-admin role', () => {
+test('lower administrative levels cannot manage equal or higher accounts', () => {
   assert.equal(
-    canManageTarget({ callerRoles: ['secretary_admin'], requestedRole: 'super_admin' }).allowed,
+    canManageTarget({ callerRoles: ['tic_admin'], targetRoles: ['tic_admin'] }).allowed,
+    false,
+  );
+  assert.equal(
+    canManageTarget({ callerRoles: ['tic_admin'], targetRoles: ['secretary_admin'] }).allowed,
+    false,
+  );
+  assert.equal(
+    canManageTarget({ callerRoles: ['secretary_admin'], targetRoles: ['tic_admin'] }).allowed,
+    true,
+  );
+  assert.equal(
+    canManageTarget({ callerRoles: ['super_admin'], targetRoles: ['super_admin'] }).allowed,
+    true,
+  );
+});
+
+test('role assignment follows administrative hierarchy', () => {
+  assert.equal(
+    canManageTarget({ callerRoles: ['tic_admin'], requestedRole: 'communication_agent' }).allowed,
+    true,
+  );
+  assert.equal(
+    canManageTarget({ callerRoles: ['tic_admin'], requestedRole: 'tic_admin' }).allowed,
+    false,
+  );
+  assert.equal(
+    canManageTarget({ callerRoles: ['secretary_admin'], requestedRole: 'tic_admin' }).allowed,
+    true,
+  );
+  assert.equal(
+    canManageTarget({ callerRoles: ['secretary_admin'], requestedRole: 'secretary_admin' }).allowed,
     false,
   );
   assert.equal(
