@@ -45,20 +45,19 @@ jobs:
           node --test tests/admin-users-policy.test.mjs
           node -e "JSON.parse(require('fs').readFileSync('site.webmanifest','utf8'))"
 
-      - name: Detect Vercel credential
+      - name: Require Vercel deployment credential
         id: credential
         shell: bash
         run: |
-          if [ -n "${VERCEL_TOKEN:-}" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::VERCEL_TOKEN no está configurado. Se omite el deploy prebuilt; la integración Git de Vercel seguirá intentando desplegar main cuando libere su cuota."
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "::error::VERCEL_TOKEN no está configurado en GitHub Secrets. El despliegue real no puede ejecutarse."
+            echo "FALLO DE DEPLOY: falta VERCEL_TOKEN con acceso al scope adminterritorial-3830s-projects." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
+          echo "available=true" >> "$GITHUB_OUTPUT"
 
       - name: Link Vercel project
-        if: steps.credential.outputs.available == 'true'
-        run: |
+                run: |
           npx --yes vercel@59.15.1 link \
             --yes \
             --project "$VERCEL_PROJECT" \
@@ -66,8 +65,7 @@ jobs:
             --token "$VERCEL_TOKEN"
 
       - name: Pull production configuration
-        if: steps.credential.outputs.available == 'true'
-        run: |
+                run: |
           npx --yes vercel@59.15.1 pull \
             --yes \
             --environment=production \
@@ -75,16 +73,14 @@ jobs:
             --token "$VERCEL_TOKEN"
 
       - name: Build on GitHub runner
-        if: steps.credential.outputs.available == 'true'
-        run: |
+                run: |
           npx --yes vercel@59.15.1 build \
             --prod \
             --scope "$VERCEL_SCOPE" \
             --token "$VERCEL_TOKEN"
 
       - name: Deploy prebuilt to production
-        if: steps.credential.outputs.available == 'true'
-        id: deploy
+                id: deploy
         shell: bash
         run: |
           url="$(npx --yes vercel@59.15.1 deploy \
@@ -94,8 +90,3 @@ jobs:
             --token "$VERCEL_TOKEN")"
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "Production deployment: $url" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Record unavailable credential
-        if: steps.credential.outputs.available != 'true'
-        run: |
-          echo "El código y las pruebas están listos. Para que Actions haga deploy prebuilt a Vercel, agrega el secret VERCEL_TOKEN con acceso al scope adminterritorial-3830s-projects." >> "$GITHUB_STEP_SUMMARY"
