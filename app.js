@@ -467,6 +467,11 @@ async function init(){
   supabase.auth.onAuthStateChange((event, session)=>{
     state.session=session; state.user=session?.user ?? null;
     if(event === 'SIGNED_OUT') { clearModal(); renderLogin(); return; }
+    if(event === 'PASSWORD_RECOVERY') {
+      renderSoftLoading();
+      setTimeout(openRecoveryPasswordModal, 0);
+      return;
+    }
     if(event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') return;
     if(activeWizard()) { toast('La sesión se actualizó en segundo plano; continuamos sin cerrar la solicitud.'); return; }
     boot();
@@ -561,7 +566,8 @@ async function handleReset(){
   const email = document.getElementById('email').value.trim().toLowerCase();
   const msg = document.getElementById('loginMessage');
   if(!email){ msg.innerHTML = '<div class="warning">Escribe primero el correo.</div>'; return; }
-  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: location.href });
+  const recoveryUrl = new URL('.', location.href).href;
+  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: recoveryUrl });
   msg.innerHTML = error ? `<div class="error">${safe(error.message)}</div>` : '<div class="success">Si la cuenta existe, se enviará el enlace de recuperación.</div>';
 }
 function renderAccessPending(){
@@ -1771,6 +1777,32 @@ function bindModalPasswordToggle(){
     input.type=input.type==='password'?'text':'password'; e.currentTarget.textContent=input.type==='password'?'Ver':'Ocultar';
   });
 }
+function openRecoveryPasswordModal(){
+  modal(h`<div class="modal-head"><div><span class="tag">Recuperación</span><h2>Establecer nueva contraseña</h2><p class="muted">Define una nueva clave para <strong>${safe(state.user?.email || '')}</strong>. No necesitas conocer la contraseña anterior.</p></div></div><form id="recoveryPasswordForm">${passwordFormFields()}<small>La nueva clave se valida contra contraseñas filtradas conocidas antes de guardarse.</small><div id="passwordMsg"></div><button class="btn btn-primary btn-block" type="submit">Guardar nueva contraseña</button></form>`);
+  bindModalPasswordToggle();
+  document.getElementById('recoveryPasswordForm').addEventListener('submit',async(e)=>{
+    e.preventDefault();
+    const fd=new FormData(e.target);
+    const password=String(fd.get('password')||'');
+    const confirm=String(fd.get('confirm_password')||'');
+    const msg=document.getElementById('passwordMsg');
+    if(password!==confirm){ msg.innerHTML='<div class="error">Las contraseñas no coinciden.</div>'; return; }
+    const passwordError=validateNewPassword(password);
+    if(passwordError){ msg.innerHTML=`<div class="error">${safe(passwordError)}</div>`; return; }
+    msg.innerHTML='<div class="warning">Validando y actualizando contraseña…</div>';
+    try{
+      await invokeProtectedFunction('admin-users',{ action:'validate_recovery_password', password });
+      const { error } = await supabase.auth.updateUser({ password });
+      if(error) throw error;
+      msg.innerHTML='<div class="success">Contraseña actualizada correctamente. Ya puedes iniciar sesión con la nueva clave.</div>';
+      toast('Contraseña recuperada correctamente.');
+      setTimeout(async()=>{ await supabase.auth.signOut({ scope:'local' }); clearModal(); renderLogin(); },1300);
+    }catch(error){
+      msg.innerHTML=`<div class="error">${safe(error.message || 'No fue posible actualizar la contraseña.')}</div>`;
+    }
+  });
+}
+
 function openOwnPasswordModal(){
   modal(h`<div class="modal-head"><div><span class="tag">Seguridad</span><h2>Cambiar mi contraseña</h2><p class="muted">Cuenta: ${safe(state.user?.email || '')}</p></div><button class="close-btn" data-close>×</button></div><form id="ownPasswordForm"><div class="field"><label>Contraseña actual</label><input name="current_password" type="password" required autocomplete="current-password"></div>${passwordFormFields()}<small>La nueva clave se verifica de forma anónima contra bases de contraseñas filtradas conocidas.</small><div id="passwordMsg"></div><button class="btn btn-primary btn-block" type="submit">Guardar nueva contraseña</button></form>`);
   bindModalPasswordToggle();
