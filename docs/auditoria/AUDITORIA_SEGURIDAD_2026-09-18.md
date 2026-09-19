@@ -129,3 +129,57 @@ El endpoint público de Google Apps Script tampoco es un secreto: debe asumirse 
 ## Riesgo residual
 
 Después de estas correcciones siguen existiendo riesgos que solo pueden descartarse con acceso al backend real: RLS efectivo, grants, funciones privilegiadas, usuarios activos, configuración de Auth, leaked-password protection, MFA/SSO, logs y Advisors. Por ello esta rama debe considerarse **hardening del código y del repositorio**, no certificación de seguridad total.
+
+
+## Revisión adicional — creación de usuarios y contraseñas
+
+Se ejecutó una segunda revisión específica del flujo de gestión de usuarios.
+
+### Problemas encontrados y corregidos
+
+- **Creación y actualización estaban mezcladas.** El antiguo `upsert_user` podía terminar modificando una cuenta ya existente cuando el operador pretendía crear una nueva. Ahora `create_user` nunca sobrescribe una cuenta: si el correo ya existe devuelve conflicto y exige gestionar el usuario existente.
+- **Creación parcial.** Si Supabase Auth creaba la cuenta y después fallaba `admin_upsert_profile`, podía quedar un usuario Auth huérfano. Ahora se intenta rollback automático con `deleteUser`; si ese rollback falla se devuelve un estado explícito de creación parcial para revisión administrativa.
+- **Correos institucionales.** Se reemplazó la validación por sufijo por una validación completa de dirección `@sanpedro-valle.gov.co`.
+- **Contraseñas.** Para creación y restablecimiento administrativo se exige mínimo 12 caracteres y al menos tres grupos entre minúsculas, mayúsculas, números y símbolos.
+- **IDs de usuario.** El restablecimiento de contraseña valida UUID antes de consultar/modificar Auth.
+- **Jerarquía administrativa.** Un Administrador TIC no puede administrar cuentas de su mismo nivel ni niveles superiores; un Secretario puede gestionar Administrador TIC y roles operativos; solo Super Admin puede gestionar el nivel Secretario/Super Admin. El cambio de clave propia se hace desde “Mi contraseña”.
+- **Rol/equipo.** Comunicaciones solo puede pertenecer a COM; Administrador TIC solo a TIC; requester, Secretario General y Super Admin no reciben equipos operativos TIC/COM.
+- **Múltiples roles/equipos.** La interfaz ahora muestra todos los roles encontrados y la auditoría marca como anomalía los perfiles con múltiples roles/equipos cuando la estructura prevista es de un rol principal.
+- **Contraseña de cuentas privilegiadas.** Los botones de cambio de clave se ocultan para cuentas del mismo o mayor nivel; el backend vuelve a validar la jerarquía, por lo que manipular el navegador no evita el control.
+
+### Pruebas ejecutadas
+
+Se añadieron pruebas automatizadas en `tests/admin-users-policy.test.mjs`.
+
+Resultado local:
+
+- **11 pruebas ejecutadas**
+- **11 aprobadas**
+- **0 fallidas**
+
+Cubren correo institucional, nombre, fortaleza de contraseña, roles/equipos permitidos, consistencia rol-equipo, UUID, niveles de privilegio, creación de roles y bloqueo del restablecimiento administrativo de la propia contraseña.
+
+También se verificó sintaxis de:
+
+- `app.js`: OK.
+- `supabase/functions/admin-users/policy.mjs`: OK.
+
+Se añadió el workflow `.github/workflows/user-security-tests.yml` para ejecutar `node --check`, las pruebas Node y `deno check` de la Edge Function en cambios futuros. Al momento de esta revisión GitHub no reportó ejecuciones de Actions para esta rama, por lo que el resultado de CI todavía no debe darse por aprobado.
+
+### Auditoría usuario por usuario
+
+Se añadió `supabase/audit/user_auth_audit.sql`. El reporte no expone hashes de contraseña y verifica por usuario:
+
+- existencia de cuenta Auth y perfil;
+- coincidencia de correo Auth/perfil;
+- correo confirmado;
+- existencia de contraseña local, sin revelar su hash;
+- estado del perfil;
+- roles;
+- equipos;
+- múltiples roles/equipos;
+- inconsistencias rol-equipo;
+- perfiles huérfanos;
+- correos duplicados.
+
+Esta consulta debe ejecutarse en el proyecto Supabase real antes de declarar cerrado el componente de usuarios.
