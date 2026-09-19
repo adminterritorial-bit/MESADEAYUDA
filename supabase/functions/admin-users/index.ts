@@ -171,6 +171,43 @@ Deno.serve(async (req) => {
     return json({ error: 'No fue posible validar los privilegios del administrador.' }, 500);
   }
 
+  if (action === 'generate_recovery_link') {
+    try {
+      const userId = validateUuid(body.user_id, 'Usuario');
+      const { data: targetData, error: targetError } = await admin.auth.admin.getUserById(userId);
+      if (targetError || !targetData.user?.email) return json({ error: 'Usuario no encontrado' }, 404);
+
+      const targetRoles = await getRoleCodes(admin, userId);
+      const targetGuard = canManageTarget({
+        callerRoles,
+        targetRoles,
+        sameUser: userId === callerId,
+      });
+      if (!targetGuard.allowed) return json({ error: targetGuard.reason }, 403);
+
+      const redirectTo = 'https://adminterritorial-bit.github.io/MESADEAYUDA/';
+      const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+        type: 'recovery',
+        email: String(targetData.user.email).trim().toLowerCase(),
+        options: { redirectTo },
+      });
+
+      if (linkError || !linkData?.properties?.action_link) {
+        return json({ error: linkError?.message || 'No fue posible generar el enlace de recuperación.' }, 400);
+      }
+
+      console.info('admin-users recovery link generated', { callerId, userId });
+      return json({
+        ok: true,
+        user_id: userId,
+        recovery_url: linkData.properties.action_link,
+        redirect_to: redirectTo,
+      });
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : 'No fue posible generar el enlace.' }, 400);
+    }
+  }
+
   if (action === 'reset_password') {
     try {
       const userId = validateUuid(body.user_id, 'Usuario');
