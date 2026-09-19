@@ -38,13 +38,15 @@ function doPost(e) {
     }
 
     const config = getUploadConfig_();
-    const user = verifySupabaseUser_(config, request.access_token);
+    const accessToken = String(request.access_token || '').trim();
+    const user = verifySupabaseUser_(config, accessToken);
     const fileInput = request.file || {};
     const context = request.context || {};
 
-    validateFile_(config, fileInput);
+    authorizeUploadContext_(config, user, context);
+    const bytes = decodeAndValidateFile_(config, fileInput);
 
-    const saved = saveFileToDrive_(config, user, fileInput, context);
+    const saved = saveFileToDrive_(config, user, fileInput, context, bytes);
     const row = registerAttachmentInSupabase_(config, user, saved, context);
 
     return jsonOutput_({
@@ -114,7 +116,8 @@ function verifySupabaseUser_(config, accessToken) {
   const code = response.getResponseCode();
 
   if (code < 200 || code >= 300) {
-    throw new Error('No se pudo validar el usuario Supabase. HTTP ' + code + ' · ' + response.getContentText());
+    console.error('No se pudo validar usuario Supabase · HTTP ' + code + ' · ' + response.getContentText());
+    throw new Error('No se pudo validar la sesión Supabase.');
   }
 
   const user = JSON.parse(response.getContentText() || '{}');
@@ -130,25 +133,156 @@ function verifySupabaseUser_(config, accessToken) {
   };
 }
 
-function validateFile_(config, fileInput) {
+function normalizeUuid_(value, label) {
+  const id = String(value || '').trim();
+  if (!id) return null;
+
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+    throw new Error(label + ' no es un identificador válido.');
+  }
+
+  return id;
+}
+
+function fetchServiceRows_(config, path) {
+  const response = UrlFetchApp.fetch(config.supabaseUrl + '/rest/v1/' + path, {
+    method: 'get',
+    muteHttpExceptions: true,
+    headers: supabaseHeaders_(config)
+  });
+
+  const code = response.getResponseCode();
+  if (code < 200 || code >= 300) {
+    console.error('Fallo consultando autorización · HTTP ' + code + ' · ' + response.getContentText());
+    throw new Error('No fue posible validar los permisos del archivo.');
+  }
+
+  return JSON.parse(response.getContentText() || '[]');
+}
+
+function getUploadActor_(config, user) {
+  const roles = fetchServiceRows_(
+    config,
+    'profile_roles?profile_id=eq.' + encodeURIComponent(user.id) + '&select=role_code'
+  ).map(row => String(row.role_code || ''));
+
+  const teams = fetchServiceRows_(
+    config,
+    'profile_teams?profile_id=eq.' + encodeURIComponent(user.id) + '&select=team_code'
+  ).map(row => String(row.team_code || ''));
+
+  return {
+    id: user.id,
+    isAdmin: roles.some(role => ['super_admin', 'secretary_admin', 'tic_admin'].includes(role)),
+    teams: teams
+  };
+}
+
+function canAccessTicket_(config, actor, ticketId) {
+  const rows = fetchServiceRows_(
+    config,
+    'tickets?id=eq.' + encodeURIComponent(ticketId) + '&select=id,requester_id,assigned_team_code&limit=1'
+  );
+
+  const ticket = rows[0];
+  if (!ticket) return false;
+
+  return actor.isAdmin
+    || String(ticket.requester_id || '') === actor.id
+    || actor.teams.includes(String(ticket.assigned_team_code || ''));
+}
+
+function authorizeUploadContext_(config, user, context) {
+  const ticketId = normalizeUuid_(context.ticket_id, 'ticket_id');
+  const messageId = normalizeUuid_(context.message_id, 'message_id');
+  const activityId = normalizeUuid_(context.activity_id, 'activity_id');
+  const actor = getUploadActor_(config, user);
+
+  if (!ticketId && !messageId && !activityId) {
+    throw new Error('El archivo debe quedar asociado a una solicitud, mensaje o actividad válida.');
+  }
+
+  if (ticketId && !canAccessTicket_(config, actor, ticketId)) {
+    throw new Error('No tienes permiso para adjuntar archivos a esta solicitud.');
+  }
+
+  if (messageId) {
+    const rows = fetchServiceRows_(
+      config,
+      'ticket_messages?id=eq.' + encodeURIComponent(messageId) + '&select=id,ticket_id,author_id&limit=1'
+    );
+    const message = rows[0];
+
+    if (!message || (String(message.author_id || '') !== actor.id && !actor.isAdmin)) {
+      throw new Error('No tienes permiso para adjuntar archivos a este mensaje.');
+    }
+
+    if (ticketId && String(message.ticket_id || '') !== ticketId) {
+      throw new Error('El mensaje no pertenece a la solicitud indicada.');
+    }
+
+    if (message.ticket_id && !canAccessTicket_(config, actor, String(message.ticket_id))) {
+      throw new Error('No tienes permiso sobre la solicitud de este mensaje.');
+    }
+  }
+
+  if (activityId) {
+    const rows = fetchServiceRows_(
+      config,
+      'activities?id=eq.' + encodeURIComponent(activityId) + '&select=id,ticket_id,created_by&limit=1'
+    );
+    const activity = rows[0];
+
+    if (!activity || (String(activity.created_by || '') !== actor.id && !actor.isAdmin)) {
+      throw new Error('No tienes permiso para adjuntar archivos a esta actividad.');
+    }
+
+    if (ticketId && activity.ticket_id && String(activity.ticket_id) !== ticketId) {
+      throw new Error('La actividad no pertenece a la solicitud indicada.');
+    }
+
+    if (activity.ticket_id && !canAccessTicket_(config, actor, String(activity.ticket_id))) {
+      throw new Error('No tienes permiso sobre la solicitud de esta actividad.');
+    }
+  }
+}
+
+function decodeAndValidateFile_(config, fileInput) {
   if (!fileInput || !fileInput.name || !fileInput.base64) {
     throw new Error('No llegó archivo válido.');
   }
 
-  const size = Number(fileInput.size || 0);
+  const cleanName = String(fileInput.name || '').trim();
+  const mimeType = String(fileInput.type || 'application/octet-stream').toLowerCase();
+  const blockedExt = /\.(html?|svg|js|mjs|cjs|exe|msi|bat|cmd|ps1|sh|vbs|scr|com|jar|apk)$/i;
+  const blockedMime = /^(text\/html|image\/svg\+xml|application\/(javascript|x-javascript|x-msdownload|x-msdos-program))$/i;
 
-  if (size > config.maxUploadBytes) {
+  if (blockedExt.test(cleanName) || blockedMime.test(mimeType)) {
+    throw new Error('Este tipo de archivo no está permitido por seguridad.');
+  }
+
+  let bytes;
+  try {
+    bytes = Utilities.base64Decode(String(fileInput.base64 || ''));
+  } catch (err) {
+    throw new Error('El contenido del archivo no es base64 válido.');
+  }
+
+  if (!bytes.length) throw new Error('El archivo está vacío.');
+
+  if (bytes.length > config.maxUploadBytes) {
     throw new Error('El archivo supera el tamaño permitido. Máximo: ' + Math.round(config.maxUploadBytes / 1024 / 1024) + ' MB.');
   }
+
+  return bytes;
 }
 
-function saveFileToDrive_(config, user, fileInput, context) {
+function saveFileToDrive_(config, user, fileInput, context, bytes) {
   const root = getRootFolder_(config);
   const yearFolder = getOrCreateFolder_(root, String(new Date().getFullYear()));
   const ticketLabel = sanitizeName_(context.ticket_number || context.ticket_id || context.source || 'sin-radicado');
   const ticketFolder = getOrCreateFolder_(yearFolder, ticketLabel);
 
-  const bytes = Utilities.base64Decode(String(fileInput.base64 || ''));
   const mimeType = fileInput.type || 'application/octet-stream';
   const cleanName = sanitizeFileName_(fileInput.name || 'archivo');
   const blob = Utilities.newBlob(bytes, mimeType, cleanName);
@@ -162,7 +296,7 @@ function saveFileToDrive_(config, user, fileInput, context) {
   return {
     file_name: cleanName,
     mime_type: mimeType,
-    size_bytes: Number(fileInput.size || bytes.length),
+    size_bytes: bytes.length,
     drive_file_id: driveFileId,
     drive_url: driveUrl,
     drive_download_url: 'https://drive.google.com/uc?export=download&id=' + encodeURIComponent(driveFileId),
@@ -210,7 +344,8 @@ function registerAttachmentInSupabase_(config, user, saved, context) {
   const code = response.getResponseCode();
 
   if (code < 200 || code >= 300) {
-    throw new Error('El archivo subió a Drive, pero no se pudo registrar en Supabase. HTTP ' + code + ' · ' + response.getContentText());
+    console.error('Fallo registrando adjunto en Supabase · HTTP ' + code + ' · ' + response.getContentText());
+    throw new Error('El archivo subió a Drive, pero no se pudo registrar de forma segura en la Mesa.');
   }
 
   const rows = JSON.parse(response.getContentText() || '[]');
