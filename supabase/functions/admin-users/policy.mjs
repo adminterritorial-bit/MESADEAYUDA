@@ -93,5 +93,8 @@ export function validateRoleTeamConsistency(roleCode, teamCode) {
   if (roleCode === 'tic_admin' && teamCode !== 'TIC') {
     throw new Error('El rol Administrador TIC debe pertenecer al equipo TIC.');
   }
+  if (['requester', 'secretary_admin', 'super_admin'].includes(roleCode) && teamCode !== null) {
+    throw new Error('Este rol no debe recibir un equipo operativo TIC/COM.');
+  }
   return true;
 }
