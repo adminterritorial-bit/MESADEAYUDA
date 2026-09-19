@@ -7,6 +7,10 @@ if (window.__MESA_TIC_APP_V4_9_LOADED__) {
 }
 window.__MESA_TIC_APP_V4_9_LOADED__ = true;
 
+const INITIAL_AUTH_URL = window.location.href;
+const RECOVERY_URL_HINT = /(?:[?#&])type=recovery(?:[&#]|$)/i.test(INITIAL_AUTH_URL)
+  || sessionStorage.getItem('mesa_password_recovery') === '1';
+
 const SUPABASE_URL = 'https://jppykxqsxayzypzdbnqd.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_CH1hn5LpS3zWPdDWqiM4jg_F7OuK7Ry';
 const APP_VERSION = 'Mesa de Ayuda TIC';
@@ -50,7 +54,8 @@ const state = {
   lastUnreadNotificationIds: new Set(),
   notificationPoller: null,
   notificationSoundUnlocked: false,
-  driveUploadUrl: ''
+  driveUploadUrl: '',
+  passwordRecovery: RECOVERY_URL_HINT
 };
 
 const roleLabels = {
@@ -455,6 +460,11 @@ async function guardedBoot(){
     toast('La solicitud sigue abierta. Se bloqueó la actualización para no perder el progreso.');
     return;
   }
+  if(state.passwordRecovery && state.user){
+    renderSoftLoading();
+    setTimeout(openRecoveryPasswordModal, 0);
+    return;
+  }
   await boot();
 }
 
@@ -468,6 +478,8 @@ async function init(){
     state.session=session; state.user=session?.user ?? null;
     if(event === 'SIGNED_OUT') { clearModal(); renderLogin(); return; }
     if(event === 'PASSWORD_RECOVERY') {
+      state.passwordRecovery = true;
+      sessionStorage.setItem('mesa_password_recovery','1');
       renderSoftLoading();
       setTimeout(openRecoveryPasswordModal, 0);
       return;
@@ -567,7 +579,9 @@ async function handleReset(){
   const msg = document.getElementById('loginMessage');
   if(!email){ msg.innerHTML = '<div class="warning">Escribe primero el correo.</div>'; return; }
   const recoveryUrl = new URL('.', location.href).href;
+  sessionStorage.setItem('mesa_password_recovery','1');
   const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: recoveryUrl });
+  if(error) sessionStorage.removeItem('mesa_password_recovery');
   msg.innerHTML = error ? `<div class="error">${safe(error.message)}</div>` : '<div class="success">Si la cuenta existe, se enviará el enlace de recuperación.</div>';
 }
 function renderAccessPending(){
@@ -1794,6 +1808,8 @@ function openRecoveryPasswordModal(){
       await invokeProtectedFunction('admin-users',{ action:'validate_recovery_password', password });
       const { error } = await supabase.auth.updateUser({ password });
       if(error) throw error;
+      state.passwordRecovery=false;
+      sessionStorage.removeItem('mesa_password_recovery');
       msg.innerHTML='<div class="success">Contraseña actualizada correctamente. Ya puedes iniciar sesión con la nueva clave.</div>';
       toast('Contraseña recuperada correctamente.');
       setTimeout(async()=>{ await supabase.auth.signOut({ scope:'local' }); clearModal(); renderLogin(); },1300);
