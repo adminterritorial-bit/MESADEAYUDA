@@ -14,7 +14,7 @@ El despliegue principal está en la raíz del repositorio:
 - `sw.js`
 - `assets/`
 
-También se conserva `frontend/app/` como espejo de compatibilidad, por si el proyecto de Vercel estuviera configurado con esa carpeta como raíz.
+La raíz es la única fuente canónica del frontend. El antiguo espejo `frontend/app/` fue eliminado porque duplicaba byte a byte la aplicación y sus assets. Antes de fusionar cambios estructurales, cualquier plataforma externa no conectada debe usar la raíz del repositorio como directorio de despliegue.
 
 ## Configuración de Drive
 
@@ -27,7 +27,7 @@ La URL del Web App de Google Apps Script puede configurarse de dos formas:
 window.MESA_TIC_UPLOAD_WEBAPP_URL = 'https://script.google.com/macros/s/XXXXX/exec';
 ```
 
-No guardes claves secretas en este repositorio. La `SUPABASE_SERVICE_ROLE_KEY` solo debe ir en Propiedades del Script de Google Apps Script.
+No guardes claves secretas en este repositorio. La `SUPABASE_SERVICE_ROLE_KEY` solo debe existir en secretos de Supabase Edge Functions o Propiedades del Script de Google Apps Script. El verificador del PIN de Drive debe configurarse como secreto `DRIVE_SETTINGS_PIN_SHA256`.
 
 ## SQL y Apps Script
 
@@ -39,10 +39,9 @@ No guardes claves secretas en este repositorio. La `SUPABASE_SERVICE_ROLE_KEY` s
 
 La auditoría y checklists quedaron en `docs/`.
 
-## Validación técnica aplicada
+## Auditoría de seguridad
 
-- `node --check app.js`: OK.
-- `node --check sw.js`: OK.
-- JSON de manifest y Apps Script: OK.
-- Eliminados duplicados sueltos de iconos en raíz.
-- `frontend/app/` sincronizado con la versión principal para evitar despliegues accidentales antiguos.
+- Política de seguridad: `SECURITY.md`.
+- Auditoría SQL de RLS, grants, vistas, funciones y usuarios: `supabase/audit/security_audit.sql`.
+- Hallazgos y estado de remediación: `docs/auditoria/AUDITORIA_SEGURIDAD_2026-09-18.md`.
+- La app mantiene su diseño y navegación; los cambios de esta auditoría se concentran en seguridad, autorización y estructura del repositorio.
