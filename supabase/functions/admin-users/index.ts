@@ -6,6 +6,15 @@ const cors = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+const ALLOWED_ROLE_CODES = new Set([
+  'requester',
+  'communication_agent',
+  'tic_admin',
+  'secretary_admin',
+  'super_admin',
+]);
+const ALLOWED_TEAM_CODES = new Set(['TIC', 'COM']);
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 }
@@ -37,17 +46,6 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const action = String(body.action || '');
 
-  if (action === 'change_own_password') {
-    try {
-      const password = validPassword(body.password);
-      const { error } = await admin.auth.admin.updateUserById(callerId, { password });
-      if (error) return json({ error: error.message }, 400);
-      return json({ ok: true });
-    } catch (error) {
-      return json({ error: error instanceof Error ? error.message : 'Contraseña inválida' }, 400);
-    }
-  }
-
   const { data: allowed, error: permError } = await admin.rpc('has_permission_for_user', {
     p_user_id: callerId,
     p_permission: 'users.manage',
@@ -76,7 +74,9 @@ Deno.serve(async (req) => {
   const password = String(body.password || '').trim() || null;
 
   if (!email.endsWith('@sanpedro-valle.gov.co')) return json({ error: 'Solo se permiten correos @sanpedro-valle.gov.co' }, 400);
-  if (!fullName) return json({ error: 'El nombre completo es obligatorio' }, 400);
+  if (!fullName || fullName.length > 160) return json({ error: 'El nombre completo es obligatorio y no puede superar 160 caracteres' }, 400);
+  if (!ALLOWED_ROLE_CODES.has(roleCode)) return json({ error: 'Rol no permitido' }, 400);
+  if (teamCode && !ALLOWED_TEAM_CODES.has(teamCode)) return json({ error: 'Equipo no permitido' }, 400);
   if (password) {
     try { validPassword(password); } catch (error) {
       return json({ error: error instanceof Error ? error.message : 'Contraseña inválida' }, 400);
