@@ -5,7 +5,7 @@ const cors = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
-const PIN_SHA256 = '2cec8cf0e321c284fa0c2ebef804aac18bf1cbb85546f89e7e3d0b6aa8b9d2cf';
+const PIN_SHA256_ENV = 'DRIVE_SETTINGS_PIN_SHA256';
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -39,7 +39,11 @@ Deno.serve(async (req) => {
   if (!allowed) return json({ error: 'No autorizado para cambiar la conexión institucional' }, 403);
 
   const body = await req.json().catch(() => ({}));
-  if (await sha256(String(body.pin || '')) !== PIN_SHA256) return json({ error: 'PIN incorrecto' }, 403);
+  const pinSha256 = String(Deno.env.get(PIN_SHA256_ENV) || '').trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(pinSha256)) {
+    return json({ error: 'PIN institucional no configurado de forma segura' }, 500);
+  }
+  if (await sha256(String(body.pin || '')) !== pinSha256) return json({ error: 'PIN incorrecto' }, 403);
 
   const value = String(body.url || '').trim().replace(/\/$/, '');
   if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(value)) {
