@@ -217,7 +217,7 @@ Deno.serve(async (req) => {
         callerRoles,
         targetRoles,
         requestedRole: roleCode,
-        sameUser: false,
+        sameUser: userId === callerId,
       });
       if (!targetGuard.allowed) return json({ error: targetGuard.reason }, 403);
 
