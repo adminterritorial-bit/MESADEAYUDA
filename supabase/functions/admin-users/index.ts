@@ -5,6 +5,7 @@ import {
   validateFullName,
   validatePassword,
   validateRoleCode,
+  validateRoleTeamConsistency,
   validateTeamCode,
   validateUuid,
 } from './policy.mjs';
@@ -45,16 +46,6 @@ async function getRoleCodes(admin: ReturnType<typeof createClient>, profileId: s
 
   if (error) throw error;
   return (data || []).map((row) => String(row.role_code || '')).filter(Boolean);
-}
-
-function validateRoleTeamConsistency(roleCode: string, teamCode: string | null) {
-  if (roleCode === 'communication_agent' && teamCode !== 'COM') {
-    throw new Error('El rol Comunicaciones debe pertenecer al equipo COM.');
-  }
-
-  if (roleCode === 'tic_admin' && teamCode !== 'TIC') {
-    throw new Error('El rol Administrador TIC debe pertenecer al equipo TIC.');
-  }
 }
 
 Deno.serve(async (req) => {
