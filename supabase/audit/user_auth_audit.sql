@@ -45,12 +45,12 @@ select
     when 'tic_admin' = any(coalesce(r.roles, array[]::text[]))
          and not ('TIC' = any(coalesce(t.teams, array[]::text[])))
       then 'ERROR: Administrador TIC sin equipo TIC'
-    when (
-      'requester' = any(coalesce(r.roles, array[]::text[]))
-      or 'secretary_admin' = any(coalesce(r.roles, array[]::text[]))
-      or 'super_admin' = any(coalesce(r.roles, array[]::text[]))
-    ) and coalesce(t.team_count,0) > 0
-      then 'ERROR: rol no operativo con equipo TIC/COM'
+    when 'requester' = any(coalesce(r.roles, array[]::text[]))
+         and exists (select 1 from unnest(coalesce(t.teams,array[]::text[])) x where x <> 'FUNC')
+      then 'ERROR: requester con equipo operativo'
+    when 'secretary_admin' = any(coalesce(r.roles, array[]::text[]))
+         and exists (select 1 from unnest(coalesce(t.teams,array[]::text[])) x where x <> 'FUNC')
+      then 'ERROR: Secretario con equipo operativo inesperado'
     else 'OK'
   end as audit_status
 from auth.users u
