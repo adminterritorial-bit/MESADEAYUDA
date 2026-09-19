@@ -15,9 +15,9 @@
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `DRIVE_SETTINGS_PIN_SHA256`
+- `SUPABASE_ANON_KEY`
 
-`DRIVE_SETTINGS_PIN_SHA256` debe contener un SHA-256 hexadecimal de 64 caracteres y configurarse como secreto de la función. No almacenar el PIN ni su hash en Git.
+La configuración global de Drive no usa PIN compartido. La Edge Function `drive-settings` exige sesión con `users.manage` y reautenticación mediante la contraseña actual del administrador.
 
 ## Google Apps Script
 
@@ -31,7 +31,7 @@ Usar Script Properties para:
 
 ## Revisión obligatoria antes de producción
 
-Ejecutar `supabase/audit/security_audit.sql` sobre el proyecto Supabase real y resolver cualquier tabla pública sin RLS, vista sin `security_invoker`, función privilegiada abierta o usuario/perfil inconsistente.
+Ejecutar `supabase/audit/security_audit.sql` y `supabase/audit/user_auth_audit.sql` sobre el proyecto real. Las vistas expuestas deben conservar `security_invoker=true`, y los RPC `SECURITY DEFINER` solo deben ser ejecutables por los roles estrictamente necesarios.
 
 ## GitHub
 
