@@ -65,7 +65,7 @@ Equipos esperados:
 - `COM`
 - `FUNC` (no operativo)
 
-La Edge Function `admin-users` autentica al llamante y exige `users.manage` para administrar terceros. La creación/actualización de usuarios ahora rechaza roles o equipos fuera de catálogo. El cambio de contraseña propia pasa directamente por `supabase.auth.updateUser`, eliminando un uso innecesario de `service_role`.
+La Edge Function `admin-users` autentica al llamante y exige `users.manage` para administrar terceros. La creación/actualización de usuarios rechaza roles o equipos fuera de catálogo. El cambio de contraseña propia usa `admin-users`, exige la contraseña actual, valida fortaleza y comprueba filtraciones mediante HIBP k-anonymity antes de modificar Auth.
 
 La auditoría SQL añadida detecta:
 
@@ -209,7 +209,7 @@ Esta consulta debe ejecutarse en el proyecto Supabase real antes de declarar cer
 ### Hosting
 
 - El frontend oficial se despliega en **Vercel**, proyecto `adminterritorial-3830s-projects/mesadeayuda`.
-- GitHub Pages fue retirado del repositorio para evitar una segunda ruta de publicación innecesaria.
+- GitHub Pages se mantiene únicamente como fallback estático preparado por Actions; Vercel continúa siendo el hosting principal.
 - Vercel confirmó correctamente el despliegue del commit `5ae25c4b8562dbb6275a06cb34b910cdf2a1ea9e`.
 - Los commits posteriores de hardening pasan GitHub Actions, pero Vercel está rechazando temporalmente nuevos builds con `build-rate-limit`. No es un error de compilación de la aplicación.
 
@@ -239,3 +239,22 @@ Aunque el Advisor nativo de Supabase continúa indicando que el toggle de Leaked
 - la contraseña completa nunca se envía al servicio externo.
 
 La activación del toggle nativo de Supabase requiere la configuración Auth/Management API que no está expuesta por el conector disponible.
+
+
+### Cierre adicional de autorización y eficiencia — 19/09/2026
+
+Se corrigieron dos bypass asociados a cuentas deshabilitadas:
+- `has_role`, `has_permission`, `is_admin` y `can_access_team` ahora exigen perfil `active`, por lo que las policies RLS que dependen de estos helpers dejan de reconocer permisos a cuentas deshabilitadas.
+- `ensure_launch_profile` solo autoactiva cuentas bootstrap en estado `pending`; una cuenta `disabled` no se reactiva por iniciar sesión.
+- `create_activity_v2` y `create_activity_for_ticket_v2` rechazan explícitamente perfiles no activos.
+- Un trigger bloquea que un usuario cambie por sí mismo `status`, `email`, `id` o `created_at` en `profiles`.
+
+Pruebas con `ROLLBACK`:
+- perfil disabled sin rol/permiso efectivo: **PASS**;
+- auto-reactivación de status: **PASS — bloqueada**;
+- creación de actividad por perfil disabled: **PASS — bloqueada**;
+- Super Admin bootstrap disabled permanece disabled: **PASS**.
+
+Se añadieron índices FK priorizados para tickets, mensajes, actividades, recursos, perfiles/equipos y colas operativas. Se evitaron índices indiscriminados en catálogos pequeños.
+
+El workflow `deploy-static.yml` construye un artefacto runtime-only. La alta inicial de GitHub Pages no puede hacerse con el `GITHUB_TOKEN` normal; el pipeline despliega si Pages ya existe o si se configura `PAGES_TOKEN` con permisos administrativos/Pages. Mientras no exista ese permiso, el pipeline valida y empaqueta sin dejar `main` en rojo.

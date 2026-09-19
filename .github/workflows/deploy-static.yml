@@ -20,7 +20,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: github-pages
+  group: static-fallback
   cancel-in-progress: true
 
 jobs:
@@ -36,7 +36,7 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Validate JavaScript
+      - name: Validate JavaScript and user policy
         run: |
           node --check app.js
           node --check sw.js
@@ -66,20 +66,74 @@ jobs:
         with:
           path: _site
 
-  deploy:
+  pages:
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      PAGES_TOKEN: ${{ secrets.PAGES_TOKEN }}
     steps:
+      - name: Detect or enable GitHub Pages
+        id: pages_state
+        shell: bash
+        env:
+          DEFAULT_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          token="$DEFAULT_TOKEN"
+          if [ -n "${PAGES_TOKEN:-}" ]; then
+            token="$PAGES_TOKEN"
+          fi
+
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/pages"
+          status="$(curl -sS -o /tmp/pages.json -w "%{http_code}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $token" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "$api")"
+
+          enabled=false
+
+          if [ "$status" = "200" ]; then
+            enabled=true
+          elif [ -n "${PAGES_TOKEN:-}" ]; then
+            create_status="$(curl -sS -o /tmp/pages-create.json -w "%{http_code}" \
+              -X POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer $token" \
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              -H "Content-Type: application/json" \
+              "$api" \
+              -d '{"build_type":"workflow"}')"
+
+            if [ "$create_status" = "201" ] || [ "$create_status" = "409" ]; then
+              enabled=true
+            else
+              echo "::warning::No fue posible habilitar Pages con PAGES_TOKEN (HTTP $create_status)."
+              cat /tmp/pages-create.json || true
+            fi
+          else
+            echo "::notice::Pages aún no está habilitado. El artefacto fue construido correctamente. Para alta inicial, configura el secreto PAGES_TOKEN con Pages:write + Administration:write o habilita Pages una vez desde Settings."
+          fi
+
+          echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
+
       - name: Configure GitHub Pages
+        if: steps.pages_state.outputs.enabled == 'true'
         uses: actions/configure-pages@v5
         with:
-          enablement: true
           token: ${{ secrets.PAGES_TOKEN || github.token }}
 
       - name: Deploy to GitHub Pages
+        if: steps.pages_state.outputs.enabled == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Record fallback state
+        if: steps.pages_state.outputs.enabled != 'true'
+        run: |
+          echo "GitHub Pages no está habilitado todavía; validación y artefacto completados sin publicar." >> "$GITHUB_STEP_SUMMARY"
