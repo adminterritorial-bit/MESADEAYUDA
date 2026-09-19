@@ -572,7 +572,12 @@ async function handleLogin(e){
   const msg = document.getElementById('loginMessage');
   msg.innerHTML = '<div class="warning">Validando sesión…</div>';
   const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if(error) msg.innerHTML = `<div class="error">${safe(error.message)}</div>`;
+  if(error){
+    const invalid = error.status === 400 || error.code === 'invalid_credentials';
+    msg.innerHTML = invalid
+      ? '<div class="error">Correo o contraseña incorrectos. Si acabas de recuperar la cuenta, asegúrate de haber completado el paso “Guardar nueva contraseña” antes de iniciar sesión.</div>'
+      : `<div class="error">${safe(error.message)}</div>`;
+  }
 }
 async function handleReset(){
   const email = document.getElementById('email').value.trim().toLowerCase();
@@ -1271,7 +1276,7 @@ function renderUsersTable(){
     const action=p.id===state.profile?.id
       ? '<span class="muted">Usa “Mi contraseña”</span>'
       : canManageUserAccount(p.id)
-        ? `<button class="btn btn-soft btn-small" data-password-user="${safe(p.id)}" data-password-email="${safe(p.email)}">Cambiar clave</button>`
+        ? `<div class="inline-actions"><button class="btn btn-soft btn-small" data-password-user="${safe(p.id)}" data-password-email="${safe(p.email)}">Cambiar clave</button><button class="btn btn-soft btn-small" data-recovery-user="${safe(p.id)}" data-recovery-email="${safe(p.email)}">Recuperar acceso</button></div>`
         : '<span class="muted">Nivel protegido</span>';
     return `<tr><td><strong>${safe(p.full_name||'Sin nombre')}</strong></td><td>${safe(p.email)}</td><td>${safe(roleText)}</td><td>${team?`<span class="pill ${team==='COM'?'com':'tic'}">${safe(team)}</span>`:'<span class="muted">Sin equipo</span>'}</td><td><span class="pill ${p.status==='active'?'green':'amber'}">${safe(p.status)}</span></td><td>${action}</td></tr>`;
   }).join('')}</tbody></table></div>`;
@@ -1368,6 +1373,7 @@ function bindView(){
   document.querySelectorAll('[data-new-activity]').forEach(btn=>btn.addEventListener('click',(e)=>{ e.stopPropagation(); openActivityModal(btn.dataset.newActivity, null, { resource: btn.dataset.resource, date: btn.dataset.date, time: btn.dataset.time }); }));
   document.getElementById('openUserModal')?.addEventListener('click',openUserModal);
   document.querySelectorAll('[data-password-user]').forEach(btn=>btn.addEventListener('click',()=>openAdminPasswordModal(btn.dataset.passwordUser, btn.dataset.passwordEmail)));
+  document.querySelectorAll('[data-recovery-user]').forEach(btn=>btn.addEventListener('click',()=>openAdminRecoveryModal(btn.dataset.recoveryUser, btn.dataset.recoveryEmail)));
   document.getElementById('refreshEmailQueue')?.addEventListener('click',async()=>{ await loadEmailQueue(); renderShell(); toast('Cola de correos actualizada.'); });
   document.getElementById('unlockDriveSettings')?.addEventListener('click',openDriveConnectionModal);
   document.getElementById('changeOwnPassword')?.addEventListener('click',openOwnPasswordModal);
@@ -1832,6 +1838,23 @@ function openOwnPasswordModal(){
     catch(error){ msg.innerHTML=`<div class="error">${safe(error.message)}</div>`; }
   });
 }
+function openAdminRecoveryModal(userId,email){
+  modal(h`<div class="modal-head"><div><span class="tag">Recuperación de acceso</span><h2>Recuperar cuenta</h2><p class="muted">${safe(email || '')}</p></div><button class="close-btn" data-close>×</button></div><div class="notice warning">Se generará un enlace oficial de recuperación de Supabase sin enviar correo. Para evitar mezclar sesiones, al continuar se cerrará tu sesión administrativa y esta pestaña entrará al flujo de recuperación del usuario.</div><div id="recoveryAdminMsg"></div><div class="form-grid"><button class="btn btn-primary" id="startAdminRecovery">Generar y continuar</button><button class="btn btn-secondary" data-close>Cancelar</button></div>`);
+  document.getElementById('startAdminRecovery')?.addEventListener('click',async()=>{
+    const msg=document.getElementById('recoveryAdminMsg');
+    msg.innerHTML='<div class="warning">Generando enlace seguro…</div>';
+    try{
+      const data=await invokeProtectedFunction('admin-users',{ action:'generate_recovery_link', user_id:userId });
+      if(!data?.recovery_url) throw new Error('Supabase no devolvió un enlace de recuperación.');
+      sessionStorage.setItem('mesa_password_recovery','1');
+      await supabase.auth.signOut({ scope:'local' });
+      location.href=data.recovery_url;
+    }catch(error){
+      msg.innerHTML=`<div class="error">${safe(error.message || 'No fue posible generar el enlace de recuperación.')}</div>`;
+    }
+  });
+}
+
 function openAdminPasswordModal(userId,email){
   modal(h`<div class="modal-head"><div><span class="tag">Gestión de usuarios</span><h2>Cambiar contraseña</h2><p class="muted">${safe(email || '')}</p></div><button class="close-btn" data-close>×</button></div><form id="adminPasswordForm">${passwordFormFields()}<div id="passwordMsg"></div><button class="btn btn-primary btn-block" type="submit">Aplicar contraseña</button></form>`);
   bindModalPasswordToggle();
