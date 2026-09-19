@@ -112,6 +112,16 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const action = String(body.action || '').trim();
 
+  if (action === 'validate_recovery_password') {
+    try {
+      const password = validatePassword(body.password);
+      await assertPasswordNotPwned(password);
+      return json({ ok: true });
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : 'Contraseña inválida' }, 400);
+    }
+  }
+
   if (action === 'change_own_password') {
     try {
       const currentPassword = String(body.current_password || '');
