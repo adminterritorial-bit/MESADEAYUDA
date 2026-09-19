@@ -48,13 +48,52 @@ async function getRoleCodes(admin: any, profileId: string): Promise<string[]> {
   return (data || []).map((row: any) => String(row.role_code || '')).filter(Boolean);
 }
 
+async function sha1Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase();
+}
+
+async function assertPasswordNotPwned(password: string): Promise<void> {
+  const hash = await sha1Hex(password);
+  const prefix = hash.slice(0, 5);
+  const suffix = hash.slice(5);
+
+  let response: Response;
+  try {
+    response = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`, {
+      headers: {
+        'Add-Padding': 'true',
+        'User-Agent': 'Mesa-Ayuda-TIC-password-security',
+      },
+    });
+  } catch (_error) {
+    throw new Error('No fue posible verificar la contraseña contra filtraciones conocidas. Intenta nuevamente.');
+  }
+
+  if (!response.ok) {
+    throw new Error('No fue posible verificar la contraseña contra filtraciones conocidas. Intenta nuevamente.');
+  }
+
+  const leaked = (await response.text())
+    .split(/\r?\n/)
+    .some((line) => line.split(':', 1)[0]?.trim().toUpperCase() === suffix);
+
+  if (leaked) {
+    throw new Error('Esta contraseña aparece en filtraciones conocidas. Elige una contraseña diferente y única.');
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json({ error: 'Método no permitido' }, 405);
 
   const url = Deno.env.get('SUPABASE_URL');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!url || !serviceKey) return json({ error: 'Variables de entorno Supabase no configuradas' }, 500);
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  if (!url || !serviceKey || !anonKey) return json({ error: 'Variables de entorno Supabase no configuradas' }, 500);
 
   const authHeader = req.headers.get('Authorization') ?? '';
   if (!authHeader.startsWith('Bearer ')) return json({ error: 'No autenticado' }, 401);
@@ -72,6 +111,37 @@ Deno.serve(async (req) => {
   const callerId = userData.user.id;
   const body = await req.json().catch(() => ({}));
   const action = String(body.action || '').trim();
+
+  if (action === 'change_own_password') {
+    try {
+      const currentPassword = String(body.current_password || '');
+      const password = validatePassword(body.password);
+      const callerEmail = String(userData.user.email || '').trim().toLowerCase();
+
+      if (!currentPassword) return json({ error: 'Debes ingresar tu contraseña actual.' }, 400);
+      if (!callerEmail) return json({ error: 'La cuenta no tiene un correo válido.' }, 400);
+      if (currentPassword === password) return json({ error: 'La nueva contraseña debe ser diferente a la actual.' }, 400);
+
+      await assertPasswordNotPwned(password);
+
+      const verifier = createClient(url, anonKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const { error: reauthError } = await verifier.auth.signInWithPassword({
+        email: callerEmail,
+        password: currentPassword,
+      });
+      if (reauthError) return json({ error: 'La contraseña actual no es correcta.' }, 403);
+
+      const { error: updateError } = await admin.auth.admin.updateUserById(callerId, { password });
+      if (updateError) return json({ error: updateError.message }, 400);
+
+      console.info('admin-users own password changed', { callerId });
+      return json({ ok: true });
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : 'Contraseña inválida' }, 400);
+    }
+  }
 
   const { data: allowed, error: permError } = await admin.rpc('has_permission_for_user', {
     p_user_id: callerId,
@@ -95,6 +165,7 @@ Deno.serve(async (req) => {
     try {
       const userId = validateUuid(body.user_id, 'Usuario');
       const password = validatePassword(body.password);
+      await assertPasswordNotPwned(password);
 
       const { data: targetData, error: targetError } = await admin.auth.admin.getUserById(userId);
       if (targetError || !targetData.user) return json({ error: 'Usuario no encontrado' }, 404);
@@ -127,6 +198,7 @@ Deno.serve(async (req) => {
       const roleCode = validateRoleCode(body.role_code || 'requester');
       const teamCode = validateTeamCode(body.team_code);
       const password = validatePassword(body.password);
+      await assertPasswordNotPwned(password);
       validateRoleTeamConsistency(roleCode, teamCode);
 
       const roleGuard = canManageTarget({ callerRoles, requestedRole: roleCode });

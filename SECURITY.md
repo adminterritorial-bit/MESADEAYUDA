@@ -36,3 +36,10 @@ Ejecutar `supabase/audit/security_audit.sql` y `supabase/audit/user_auth_audit.s
 ## GitHub
 
 La rama `main` debe protegerse con PR obligatorio, al menos una revisión, checks requeridos y bloqueo de force-push/deletion. Los secretos deben mantenerse fuera de Actions y archivos versionados salvo mediante GitHub Secrets.
+
+
+## Protección contra contraseñas filtradas
+
+Además de la política de longitud/complejidad, todas las rutas de creación, restablecimiento y cambio propio de contraseña consultan Have I Been Pwned Pwned Passwords mediante k-anonymity. La contraseña completa nunca se transmite: se calcula SHA-1 localmente en la Edge Function y solo se consulta el prefijo de 5 caracteres. Si la verificación externa no está disponible, el cambio falla de forma cerrada.
+
+El cambio de contraseña propia exige además reautenticación con la contraseña actual antes de modificar Auth.

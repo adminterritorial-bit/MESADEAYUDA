@@ -1,6 +1,6 @@
 /**
  * Mesa de Ayuda TIC · Google Drive Upload Web App
- * Versión: v4.8.11
+ * Versión: v4.8.12-security-hardened
  *
  * Función:
  * - Recibe archivos en base64 desde la Mesa.
@@ -19,13 +19,14 @@
  * DRIVE_ROOT_FOLDER_ID=ID_DE_CARPETA_EXISTENTE_EN_DRIVE
  */
 
-const DRIVE_UPLOAD_VERSION = 'mesa-tic-v4.8.11-drive-upload';
+const DRIVE_UPLOAD_VERSION = 'mesa-tic-v4.8.12-security-hardened';
 
 function doGet() {
   return jsonOutput_({
     ok: true,
     service: 'Mesa de Ayuda TIC Drive Upload',
-    version: DRIVE_UPLOAD_VERSION
+    version: DRIVE_UPLOAD_VERSION,
+    security: 'context-authorization-v2'
   });
 }
 

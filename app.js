@@ -1772,15 +1772,15 @@ function bindModalPasswordToggle(){
   });
 }
 function openOwnPasswordModal(){
-  modal(h`<div class="modal-head"><div><span class="tag">Seguridad</span><h2>Cambiar mi contraseña</h2><p class="muted">Cuenta: ${safe(state.user?.email || '')}</p></div><button class="close-btn" data-close>×</button></div><form id="ownPasswordForm">${passwordFormFields()}<div id="passwordMsg"></div><button class="btn btn-primary btn-block" type="submit">Guardar nueva contraseña</button></form>`);
+  modal(h`<div class="modal-head"><div><span class="tag">Seguridad</span><h2>Cambiar mi contraseña</h2><p class="muted">Cuenta: ${safe(state.user?.email || '')}</p></div><button class="close-btn" data-close>×</button></div><form id="ownPasswordForm"><div class="field"><label>Contraseña actual</label><input name="current_password" type="password" required autocomplete="current-password"></div>${passwordFormFields()}<small>La nueva clave se verifica de forma anónima contra bases de contraseñas filtradas conocidas.</small><div id="passwordMsg"></div><button class="btn btn-primary btn-block" type="submit">Guardar nueva contraseña</button></form>`);
   bindModalPasswordToggle();
   document.getElementById('ownPasswordForm').addEventListener('submit',async(e)=>{
-    e.preventDefault(); const fd=new FormData(e.target); const password=String(fd.get('password')||''); const confirm=String(fd.get('confirm_password')||''); const msg=document.getElementById('passwordMsg');
+    e.preventDefault(); const fd=new FormData(e.target); const currentPassword=String(fd.get('current_password')||''); const password=String(fd.get('password')||''); const confirm=String(fd.get('confirm_password')||''); const msg=document.getElementById('passwordMsg');
     if(password!==confirm){ msg.innerHTML='<div class="error">Las contraseñas no coinciden.</div>'; return; }
     const passwordError = validateNewPassword(password);
     if(passwordError){ msg.innerHTML=`<div class="error">${safe(passwordError)}</div>`; return; }
     msg.innerHTML='<div class="warning">Actualizando contraseña…</div>';
-    try{ const { error } = await supabase.auth.updateUser({ password }); if(error) throw error; msg.innerHTML='<div class="success">Contraseña actualizada. Inicia sesión nuevamente con la nueva clave.</div>'; toast('Tu contraseña fue actualizada.'); setTimeout(()=>supabase.auth.signOut({ scope:'local' }),1100); }
+    try{ await invokeProtectedFunction('admin-users',{ action:'change_own_password', current_password:currentPassword, password }); msg.innerHTML='<div class="success">Contraseña actualizada. Inicia sesión nuevamente con la nueva clave.</div>'; toast('Tu contraseña fue actualizada.'); setTimeout(()=>supabase.auth.signOut({ scope:'local' }),1100); }
     catch(error){ msg.innerHTML=`<div class="error">${safe(error.message)}</div>`; }
   });
 }
