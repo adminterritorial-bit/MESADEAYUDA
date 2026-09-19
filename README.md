@@ -27,7 +27,7 @@ La URL del Web App de Google Apps Script puede configurarse de dos formas:
 window.MESA_TIC_UPLOAD_WEBAPP_URL = 'https://script.google.com/macros/s/XXXXX/exec';
 ```
 
-No guardes claves secretas en este repositorio. La `SUPABASE_SERVICE_ROLE_KEY` solo debe existir en secretos de Supabase Edge Functions o Propiedades del Script de Google Apps Script. El verificador del PIN de Drive debe configurarse como secreto `DRIVE_SETTINGS_PIN_SHA256`.
+No guardes claves secretas en este repositorio. La `SUPABASE_SERVICE_ROLE_KEY` solo debe existir en secretos de Supabase Edge Functions o Propiedades del Script de Google Apps Script. Los cambios de la conexión global de Drive exigen reautenticación con la contraseña actual de una cuenta autorizada.
 
 ## SQL y Apps Script
 
