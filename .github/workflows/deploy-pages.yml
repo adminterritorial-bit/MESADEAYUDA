@@ -1,8 +1,8 @@
 name: Deploy Mesa TIC to GitHub Pages
 
+# GitHub Pages must be enabled once in Repository Settings → Pages → Source: GitHub Actions.
+# After that, run this workflow manually.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

@@ -30,7 +30,7 @@ async function findUserByEmail(admin: any, email: string): Promise<any | null> {
     const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
     if (error) throw error;
 
-    const found = data.users.find((user) => user.email?.toLowerCase() === email);
+    const found = data.users.find((user: any) => user.email?.toLowerCase() === email);
     if (found) return found;
     if (data.users.length < perPage) return null;
   }
@@ -45,7 +45,7 @@ async function getRoleCodes(admin: any, profileId: string): Promise<string[]> {
     .eq('profile_id', profileId);
 
   if (error) throw error;
-  return (data || []).map((row) => String(row.role_code || '')).filter(Boolean);
+  return (data || []).map((row: any) => String(row.role_code || '')).filter(Boolean);
 }
 
 Deno.serve(async (req) => {
