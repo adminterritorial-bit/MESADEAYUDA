@@ -50,8 +50,14 @@ test('role and team allowlists reject unknown values', () => {
 test('role/team consistency is enforced', () => {
   assert.equal(validateRoleTeamConsistency('communication_agent', 'COM'), true);
   assert.equal(validateRoleTeamConsistency('tic_admin', 'TIC'), true);
+  assert.equal(validateRoleTeamConsistency('requester', null), true);
+  assert.equal(validateRoleTeamConsistency('secretary_admin', null), true);
+  assert.equal(validateRoleTeamConsistency('super_admin', null), true);
   assert.throws(() => validateRoleTeamConsistency('communication_agent', 'TIC'));
   assert.throws(() => validateRoleTeamConsistency('tic_admin', 'COM'));
+  assert.throws(() => validateRoleTeamConsistency('requester', 'TIC'));
+  assert.throws(() => validateRoleTeamConsistency('requester', 'COM'));
+  assert.throws(() => validateRoleTeamConsistency('super_admin', 'TIC'));
 });
 
 test('UUID validation rejects arbitrary target identifiers', () => {
