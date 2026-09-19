@@ -88,6 +88,14 @@ function drawerStatusOptions(currentStatus){ return currentStatus === 'closed' ?
 
 function h(strings,...values){ return strings.map((s,i)=>s + (values[i] ?? '')).join(''); }
 function safe(v){ const d=document.createElement('div'); d.textContent = v ?? ''; return d.innerHTML; }
+function safeExternalUrl(value){
+  try{
+    const url = new URL(String(value || ''));
+    return url.protocol === 'https:' ? safe(url.href) : '#';
+  }catch(_){
+    return '#';
+  }
+}
 function icon(name){
   const icons = {
     home:'M3 11.5 12 4l9 7.5v8.5a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',
@@ -355,7 +363,7 @@ function fileSizeLabel(bytes){
 function renderAttachmentList(files){
   const rows = Array.isArray(files) ? files : [];
   if(!rows.length) return emptyState('Sin archivos','No hay documentos o insumos asociados a esta solicitud.');
-  return `<div class="attachment-list">${rows.map(f=>`<a class="attachment-item" href="${safe(f.drive_url || f.drive_download_url || '#')}" target="_blank" rel="noopener"><span>${icon('publication')}</span><div><strong>${safe(f.file_name || 'Archivo')}</strong><small>${safe(f.mime_type || 'archivo')} · ${safe(fileSizeLabel(f.size_bytes))}</small></div></a>`).join('')}</div>`;
+  return `<div class="attachment-list">${rows.map(f=>`<a class="attachment-item" href="${safeExternalUrl(f.drive_url || f.drive_download_url)}" target="_blank" rel="noopener"><span>${icon('publication')}</span><div><strong>${safe(f.file_name || 'Archivo')}</strong><small>${safe(f.mime_type || 'archivo')} · ${safe(fileSizeLabel(f.size_bytes))}</small></div></a>`).join('')}</div>`;
 }
 function readFileAsBase64(file){
   return new Promise((resolve,reject)=>{
@@ -1735,7 +1743,7 @@ function openOwnPasswordModal(){
     e.preventDefault(); const fd=new FormData(e.target); const password=String(fd.get('password')||''); const confirm=String(fd.get('confirm_password')||''); const msg=document.getElementById('passwordMsg');
     if(password!==confirm){ msg.innerHTML='<div class="error">Las contraseñas no coinciden.</div>'; return; }
     msg.innerHTML='<div class="warning">Actualizando contraseña…</div>';
-    try{ await invokeProtectedFunction('admin-users',{ action:'change_own_password', password }); msg.innerHTML='<div class="success">Contraseña actualizada. Inicia sesión nuevamente con la nueva clave.</div>'; toast('Tu contraseña fue actualizada.'); setTimeout(()=>supabase.auth.signOut({ scope:'local' }),1100); }
+    try{ const { error } = await supabase.auth.updateUser({ password }); if(error) throw error; msg.innerHTML='<div class="success">Contraseña actualizada. Inicia sesión nuevamente con la nueva clave.</div>'; toast('Tu contraseña fue actualizada.'); setTimeout(()=>supabase.auth.signOut({ scope:'local' }),1100); }
     catch(error){ msg.innerHTML=`<div class="error">${safe(error.message)}</div>`; }
   });
 }
