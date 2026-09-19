@@ -43,6 +43,7 @@ test('password policy accepts strong values and rejects weak ones', () => {
 test('role and team allowlists reject unknown values', () => {
   assert.equal(validateRoleCode('requester'), 'requester');
   assert.equal(validateTeamCode('TIC'), 'TIC');
+  assert.equal(validateTeamCode('FUNC'), 'FUNC');
   assert.equal(validateTeamCode(''), null);
   assert.throws(() => validateRoleCode('root'));
   assert.throws(() => validateTeamCode('ADMIN'));
@@ -52,13 +53,16 @@ test('role/team consistency is enforced', () => {
   assert.equal(validateRoleTeamConsistency('communication_agent', 'COM'), true);
   assert.equal(validateRoleTeamConsistency('tic_admin', 'TIC'), true);
   assert.equal(validateRoleTeamConsistency('requester', null), true);
+  assert.equal(validateRoleTeamConsistency('requester', 'FUNC'), true);
   assert.equal(validateRoleTeamConsistency('secretary_admin', null), true);
+  assert.equal(validateRoleTeamConsistency('secretary_admin', 'FUNC'), true);
   assert.equal(validateRoleTeamConsistency('super_admin', null), true);
+  assert.equal(validateRoleTeamConsistency('super_admin', 'TIC'), true);
   assert.throws(() => validateRoleTeamConsistency('communication_agent', 'TIC'));
   assert.throws(() => validateRoleTeamConsistency('tic_admin', 'COM'));
   assert.throws(() => validateRoleTeamConsistency('requester', 'TIC'));
   assert.throws(() => validateRoleTeamConsistency('requester', 'COM'));
-  assert.throws(() => validateRoleTeamConsistency('super_admin', 'TIC'));
+  assert.throws(() => validateRoleTeamConsistency('secretary_admin', 'TIC'));
 });
 
 test('UUID validation rejects arbitrary target identifiers', () => {
