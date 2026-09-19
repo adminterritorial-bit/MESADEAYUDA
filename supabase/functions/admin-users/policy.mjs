@@ -67,6 +67,7 @@ export function validatePassword(value) {
   return password;
 }
 
+/** @type {Readonly<Record<string, number>>} */
 const ROLE_LEVEL = Object.freeze({
   requester: 10,
   communication_agent: 20,
@@ -75,11 +76,30 @@ const ROLE_LEVEL = Object.freeze({
   super_admin: 50,
 });
 
+/**
+ * @param {string[]} [roles]
+ * @returns {number}
+ */
 export function highestRoleLevel(roles = []) {
   return roles.reduce((max, role) => Math.max(max, ROLE_LEVEL[role] || 0), 0);
 }
 
-export function canManageTarget({ callerRoles = [], targetRoles = [], requestedRole = null, sameUser = false }) {
+/**
+ * @param {{
+ *   callerRoles?: string[],
+ *   targetRoles?: string[],
+ *   requestedRole?: string | null,
+ *   sameUser?: boolean
+ * }} [options]
+ * @returns {{allowed: boolean, reason: string}}
+ */
+export function canManageTarget(options = {}) {
+  const {
+    callerRoles = [],
+    targetRoles = [],
+    requestedRole = null,
+    sameUser = false,
+  } = options;
   if (sameUser) {
     return { allowed: false, reason: 'Usa la opción Mi contraseña para cambiar tu propia clave.' };
   }
@@ -106,6 +126,11 @@ export function canManageTarget({ callerRoles = [], targetRoles = [], requestedR
   return { allowed: true, reason: '' };
 }
 
+/**
+ * @param {string} roleCode
+ * @param {string | null} teamCode
+ * @returns {boolean}
+ */
 export function validateRoleTeamConsistency(roleCode, teamCode) {
   if (roleCode === 'communication_agent' && teamCode !== 'COM') {
     throw new Error('El rol Comunicaciones debe pertenecer al equipo COM.');
