@@ -88,6 +88,14 @@ function drawerStatusOptions(currentStatus){ return currentStatus === 'closed' ?
 
 function h(strings,...values){ return strings.map((s,i)=>s + (values[i] ?? '')).join(''); }
 function safe(v){ const d=document.createElement('div'); d.textContent = v ?? ''; return d.innerHTML; }
+function safeExternalUrl(value){
+  try{
+    const url = new URL(String(value || ''));
+    return url.protocol === 'https:' ? safe(url.href) : '#';
+  }catch(_){
+    return '#';
+  }
+}
 function icon(name){
   const icons = {
     home:'M3 11.5 12 4l9 7.5v8.5a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',
@@ -221,6 +229,23 @@ function canManageRequests(){ return hasAnyRole(['super_admin','secretary_admin'
 function canManageSchedule(){ return Boolean(state.user && state.profile); }
 function isComms(){ return hasRole('communication_agent'); }
 function isAdmin(){ return hasAnyRole(['super_admin','secretary_admin','tic_admin']); }
+const userRoleLevel = { requester:10, communication_agent:20, tic_admin:30, secretary_admin:40, super_admin:50 };
+function roleCodesForProfile(profileId){ return state.roleRows.filter(r=>r.profile_id===profileId).map(r=>r.role_code).filter(Boolean); }
+function highestRoleLevelClient(codes){ return (codes||[]).reduce((max,code)=>Math.max(max,userRoleLevel[code]||0),0); }
+function currentRoleCodes(){ return state.roles.map(r=>r.code).filter(Boolean); }
+function canManageUserAccount(profileId){
+  if(!profileId || profileId===state.profile?.id) return false;
+  const callerLevel=highestRoleLevelClient(currentRoleCodes());
+  const targetLevel=highestRoleLevelClient(roleCodesForProfile(profileId));
+  return callerLevel===userRoleLevel.super_admin && targetLevel===userRoleLevel.super_admin ? true : callerLevel>targetLevel;
+}
+function creatableUserRoles(){
+  const callerLevel=highestRoleLevelClient(currentRoleCodes());
+  return Object.keys(userRoleLevel).filter(code=>{
+    const level=userRoleLevel[code];
+    return callerLevel===userRoleLevel.super_admin && level===userRoleLevel.super_admin ? true : callerLevel>level;
+  });
+}
 function toast(message,type='info'){
   let stack=document.querySelector('.toast-stack');
   if(!stack){ stack=document.createElement('div'); stack.className='toast-stack'; document.body.appendChild(stack); }
@@ -355,7 +380,7 @@ function fileSizeLabel(bytes){
 function renderAttachmentList(files){
   const rows = Array.isArray(files) ? files : [];
   if(!rows.length) return emptyState('Sin archivos','No hay documentos o insumos asociados a esta solicitud.');
-  return `<div class="attachment-list">${rows.map(f=>`<a class="attachment-item" href="${safe(f.drive_url || f.drive_download_url || '#')}" target="_blank" rel="noopener"><span>${icon('publication')}</span><div><strong>${safe(f.file_name || 'Archivo')}</strong><small>${safe(f.mime_type || 'archivo')} · ${safe(fileSizeLabel(f.size_bytes))}</small></div></a>`).join('')}</div>`;
+  return `<div class="attachment-list">${rows.map(f=>`<a class="attachment-item" href="${safeExternalUrl(f.drive_url || f.drive_download_url)}" target="_blank" rel="noopener"><span>${icon('publication')}</span><div><strong>${safe(f.file_name || 'Archivo')}</strong><small>${safe(f.mime_type || 'archivo')} · ${safe(fileSizeLabel(f.size_bytes))}</small></div></a>`).join('')}</div>`;
 }
 function readFileAsBase64(file){
   return new Promise((resolve,reject)=>{
@@ -1219,13 +1244,23 @@ function renderUsers(){
 }
 function renderUsersTable(){
   if(!state.profiles.length) return emptyState('Sin usuarios visibles','Cuando se creen usuarios, aparecerán aquí.');
-  return `<div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Equipo</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${state.profiles.map(p=>{ const role=state.roleRows.find(r=>r.profile_id===p.id)?.role_code || 'Sin rol'; const team=state.teamRows.find(t=>t.profile_id===p.id)?.team_code || ''; return `<tr><td><strong>${safe(p.full_name||'Sin nombre')}</strong></td><td>${safe(p.email)}</td><td>${safe(roleLabels[role]||role)}</td><td>${team?`<span class="pill ${team==='COM'?'com':'tic'}">${safe(team)}</span>`:'<span class="muted">Sin equipo</span>'}</td><td><span class="pill ${p.status==='active'?'green':'amber'}">${safe(p.status)}</span></td><td><button class="btn btn-soft btn-small" data-password-user="${safe(p.id)}" data-password-email="${safe(p.email)}">Cambiar clave</button></td></tr>`; }).join('')}</tbody></table></div>`;
+  return `<div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Equipo</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${state.profiles.map(p=>{
+    const roles=roleCodesForProfile(p.id);
+    const roleText=roles.length?roles.map(role=>roleLabels[role]||role).join(' · '):'Sin rol';
+    const team=state.teamRows.find(t=>t.profile_id===p.id)?.team_code || '';
+    const action=p.id===state.profile?.id
+      ? '<span class="muted">Usa “Mi contraseña”</span>'
+      : canManageUserAccount(p.id)
+        ? `<button class="btn btn-soft btn-small" data-password-user="${safe(p.id)}" data-password-email="${safe(p.email)}">Cambiar clave</button>`
+        : '<span class="muted">Nivel protegido</span>';
+    return `<tr><td><strong>${safe(p.full_name||'Sin nombre')}</strong></td><td>${safe(p.email)}</td><td>${safe(roleText)}</td><td>${team?`<span class="pill ${team==='COM'?'com':'tic'}">${safe(team)}</span>`:'<span class="muted">Sin equipo</span>'}</td><td><span class="pill ${p.status==='active'?'green':'amber'}">${safe(p.status)}</span></td><td>${action}</td></tr>`;
+  }).join('')}</tbody></table></div>`;
 }
 function renderRoleMap(){
   const rows = [
     {title:'Funcionario solicitante', desc:'Radica solicitudes, consulta las propias y separa espacios en el cronograma con TIC o Comunicaciones.', asset:'role-funcionario', accent:'funcionario'},
     {title:'Comunicaciones', desc:'Gestiona publicaciones y cubrimientos, además de su agenda asignada.', asset:'role-comunicaciones', accent:'comunicaciones'},
-    {title:'Administrador TIC', desc:'Opera solicitudes TIC, administra usuarios y coordina el cronograma institucional.', asset:'role-cio-tic', accent:'cio'},
+    {title:'Administrador TIC', desc:'Opera solicitudes TIC, conocimiento y configuración autorizada, y coordina el cronograma institucional.', asset:'role-cio-tic', accent:'cio'},
     {title:'Secretario General', desc:'Supervisa la operación institucional y el seguimiento general.', asset:'role-secretario-general', accent:'secretario'}
   ];
   return `<div class="role-map-grid">${rows.map(r=>`<div class="role-card ${safe(r.accent)}"><div class="role-card-media">${assetIcon(r.asset, r.title, 'role-card-img')}</div><div class="role-card-body"><span class="role-kicker">Mapa de permisos</span><strong>${safe(r.title)}</strong><p>${safe(r.desc)}</p></div></div>`).join('')}</div>`;
@@ -1248,7 +1283,7 @@ function renderSettings(){
     </div>
   </div>
   <div class="grid grid-2"><div class="card"><div class="section-title"><div><h2>Servicios activos</h2><p>Catálogo real cargado desde Supabase.</p></div></div>${state.services.length?`<div class="compact-list">${state.services.map(s=>`<div class="compact-item"><div><strong>${safe(s.name)}</strong><div class="ticket-meta">${safe(s.description||'')}</div></div><span class="pill ${s.team_code==='COM'?'com':'tic'}">${safe(s.team_code)}</span></div>`).join('')}</div>`:emptyState('Sin servicios','No hay servicios activos.')}</div><div class="card"><div class="section-title"><div><h2>Recursos de cronograma</h2><p>Administrador TIC y comunicadores disponibles para asignación.</p></div><button class="btn btn-soft btn-small" data-jump="launch_check">Checklist</button></div>${state.resources.length?`<div class="compact-list">${state.resources.map(r=>`<div class="compact-item"><div><strong>${safe(r.name)}</strong><div class="ticket-meta">${safe(r.role_label)} · ${safe(r.code)}</div></div><span class="pill ${r.team_code==='COM'?'com':'tic'}">${safe(r.team_code)}</span></div>`).join('')}</div>`:emptyState('Sin recursos','No hay recursos configurados.')}</div></div>
-  <div class="grid grid-2 settings-security-grid"><div class="card upload-config-card"><div class="section-title"><div><h2>Conexión institucional de Drive</h2><p>La misma URL se usa en todos los navegadores, celulares y computadores.</p></div><span class="pill ${uploadUrl?'green':'amber'}">${uploadUrl?'Fija y activa':'Pendiente'}</span></div><div class="field"><label>Web App de Google Apps Script</label><input value="${safe(uploadUrl)}" readonly></div><button class="btn btn-soft" id="unlockDriveSettings">Desbloquear con PIN</button><p class="help-text">El cambio exige sesión administrativa y PIN. La configuración se guarda globalmente en Supabase.</p></div>
+  <div class="grid grid-2 settings-security-grid"><div class="card upload-config-card"><div class="section-title"><div><h2>Conexión institucional de Drive</h2><p>La misma URL se usa en todos los navegadores, celulares y computadores.</p></div><span class="pill ${uploadUrl?'green':'amber'}">${uploadUrl?'Fija y activa':'Pendiente'}</span></div><div class="field"><label>Web App de Google Apps Script</label><input value="${safe(uploadUrl)}" readonly></div><button class="btn btn-soft" id="unlockDriveSettings">Cambiar conexión</button><p class="help-text">El cambio exige una cuenta autorizada y confirmar su contraseña actual. La configuración se guarda globalmente en Supabase.</p></div>
   <div class="card password-config-card"><div class="section-title"><div><h2>Mi contraseña</h2><p>Actualiza la clave de tu cuenta administrativa desde la Mesa.</p></div><span class="pill green">Protegida</span></div><button class="btn btn-primary" id="changeOwnPassword">Cambiar mi contraseña</button><p class="help-text">La nueva contraseña se aplica también cuando ingresas por correo y contraseña. Google continúa enlazado al mismo perfil.</p></div></div>
   <div class="card launch-inline">${renderLaunchChecklistInner()}</div>`;
 }
@@ -1719,8 +1754,16 @@ function openActivityModal(kind='support', ticket=null, preset={}){
     msg.innerHTML='<div class="success">Actividad creada.</div>'; toast('Actividad creada en el cronograma.'); setTimeout(async()=>{ clearModal(); await loadActivities(); renderShell(); },650);
   });
 }
+function validateNewPassword(password){
+  const value = String(password || '');
+  if(value.length < 12) return 'La contraseña debe tener mínimo 12 caracteres.';
+  if(value.length > 72) return 'La contraseña no puede superar 72 caracteres.';
+  const groups = [/[a-z]/.test(value), /[A-Z]/.test(value), /[0-9]/.test(value), /[^A-Za-z0-9]/.test(value)].filter(Boolean).length;
+  if(groups < 3) return 'Combina al menos tres grupos: minúsculas, mayúsculas, números y símbolos.';
+  return '';
+}
 function passwordFormFields(){
-  return `<div class="field"><label>Nueva contraseña</label><div class="password-field"><input name="password" type="password" required minlength="8" maxlength="72" autocomplete="new-password"><button type="button" data-toggle-modal-password>Ver</button></div></div><div class="field"><label>Confirmar contraseña</label><input name="confirm_password" type="password" required minlength="8" maxlength="72" autocomplete="new-password"></div>`;
+  return `<div class="field"><label>Nueva contraseña</label><div class="password-field"><input name="password" type="password" required minlength="12" maxlength="72" autocomplete="new-password"><button type="button" data-toggle-modal-password>Ver</button></div><small>Mínimo 12 caracteres y al menos tres grupos entre mayúsculas, minúsculas, números y símbolos.</small></div><div class="field"><label>Confirmar contraseña</label><input name="confirm_password" type="password" required minlength="12" maxlength="72" autocomplete="new-password"></div>`;
 }
 function bindModalPasswordToggle(){
   modalRoot.querySelector('[data-toggle-modal-password]')?.addEventListener('click',(e)=>{
@@ -1734,8 +1777,10 @@ function openOwnPasswordModal(){
   document.getElementById('ownPasswordForm').addEventListener('submit',async(e)=>{
     e.preventDefault(); const fd=new FormData(e.target); const password=String(fd.get('password')||''); const confirm=String(fd.get('confirm_password')||''); const msg=document.getElementById('passwordMsg');
     if(password!==confirm){ msg.innerHTML='<div class="error">Las contraseñas no coinciden.</div>'; return; }
+    const passwordError = validateNewPassword(password);
+    if(passwordError){ msg.innerHTML=`<div class="error">${safe(passwordError)}</div>`; return; }
     msg.innerHTML='<div class="warning">Actualizando contraseña…</div>';
-    try{ await invokeProtectedFunction('admin-users',{ action:'change_own_password', password }); msg.innerHTML='<div class="success">Contraseña actualizada. Inicia sesión nuevamente con la nueva clave.</div>'; toast('Tu contraseña fue actualizada.'); setTimeout(()=>supabase.auth.signOut({ scope:'local' }),1100); }
+    try{ const { error } = await supabase.auth.updateUser({ password }); if(error) throw error; msg.innerHTML='<div class="success">Contraseña actualizada. Inicia sesión nuevamente con la nueva clave.</div>'; toast('Tu contraseña fue actualizada.'); setTimeout(()=>supabase.auth.signOut({ scope:'local' }),1100); }
     catch(error){ msg.innerHTML=`<div class="error">${safe(error.message)}</div>`; }
   });
 }
@@ -1745,27 +1790,59 @@ function openAdminPasswordModal(userId,email){
   document.getElementById('adminPasswordForm').addEventListener('submit',async(e)=>{
     e.preventDefault(); const fd=new FormData(e.target); const password=String(fd.get('password')||''); const confirm=String(fd.get('confirm_password')||''); const msg=document.getElementById('passwordMsg');
     if(password!==confirm){ msg.innerHTML='<div class="error">Las contraseñas no coinciden.</div>'; return; }
+    const passwordError = validateNewPassword(password);
+    if(passwordError){ msg.innerHTML=`<div class="error">${safe(passwordError)}</div>`; return; }
     msg.innerHTML='<div class="warning">Actualizando contraseña…</div>';
     try{ await invokeProtectedFunction('admin-users',{ action:'reset_password', user_id:userId, password }); msg.innerHTML='<div class="success">Contraseña actualizada correctamente.</div>'; toast(`Contraseña actualizada para ${email}.`); if(userId===state.user?.id) setTimeout(()=>supabase.auth.signOut({ scope:'local' }),1100); else setTimeout(clearModal,850); }
     catch(error){ msg.innerHTML=`<div class="error">${safe(error.message)}</div>`; }
   });
 }
 function openDriveConnectionModal(){
-  modal(h`<div class="modal-head"><div><span class="tag">Conexión global</span><h2>Google Drive</h2><p class="muted">El cambio se aplicará en todos los dispositivos.</p></div><button class="close-btn" data-close>×</button></div><form id="driveSettingsForm"><div class="field"><label>URL del Web App</label><input name="url" type="url" required value="${safe(driveUploadWebAppUrl())}"></div><div class="field"><label>PIN de configuración</label><input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required autocomplete="off"></div><div id="driveSettingsMsg"></div><button class="btn btn-primary btn-block" type="submit">Guardar conexión global</button></form>`);
+  modal(h`<div class="modal-head"><div><span class="tag">Conexión global</span><h2>Google Drive</h2><p class="muted">El cambio se aplicará en todos los dispositivos.</p></div><button class="close-btn" data-close>×</button></div><form id="driveSettingsForm"><div class="field"><label>URL del Web App</label><input name="url" type="url" required value="${safe(driveUploadWebAppUrl())}"></div><div class="field"><label>Contraseña actual</label><input name="password" type="password" required autocomplete="current-password"><small>Confirma tu identidad con la contraseña de esta cuenta administrativa.</small></div><div id="driveSettingsMsg"></div><button class="btn btn-primary btn-block" type="submit">Guardar conexión global</button></form>`);
   document.getElementById('driveSettingsForm').addEventListener('submit',async(e)=>{
     e.preventDefault(); const fd=new FormData(e.target); const msg=document.getElementById('driveSettingsMsg'); msg.innerHTML='<div class="warning">Guardando conexión institucional…</div>';
-    try{ const result=await invokeProtectedFunction('drive-settings',{ url:fd.get('url'), pin:fd.get('pin') }); state.driveUploadUrl=result.url; msg.innerHTML='<div class="success">Conexión guardada para todos los dispositivos.</div>'; toast('Conexión global de Drive actualizada.'); setTimeout(()=>{ clearModal(); renderShell(); },850); }
+    try{ const result=await invokeProtectedFunction('drive-settings',{ url:fd.get('url'), password:fd.get('password') }); state.driveUploadUrl=result.url; msg.innerHTML='<div class="success">Conexión guardada para todos los dispositivos.</div>'; toast('Conexión global de Drive actualizada.'); setTimeout(()=>{ clearModal(); renderShell(); },850); }
     catch(error){ msg.innerHTML=`<div class="error">${safe(error.message)}</div>`; }
   });
 }
 function openUserModal(){
-  modal(h`<div class="modal-head"><div><span class="tag">Usuarios</span><h2>Crear usuario</h2><p class="muted">Usa correo institucional. El rol determina módulos y permisos.</p></div><button class="close-btn" data-close>×</button></div><form id="userForm"><div class="field"><label>Correo</label><input name="email" type="email" required placeholder="usuario@sanpedro-valle.gov.co"></div><div class="field"><label>Nombre completo</label><input name="full_name" required></div><div class="form-grid"><div class="field"><label>Rol</label><select name="role_code"><option value="requester">Funcionario solicitante</option><option value="communication_agent">Comunicaciones</option><option value="tic_admin">Administrador TIC</option><option value="secretary_admin">Secretario General</option><option value="super_admin">Super Admin</option></select></div><div class="field"><label>Equipo</label><select name="team_code"><option value="">Sin equipo</option><option value="TIC">TIC</option><option value="COM">Comunicaciones</option></select></div></div><div class="field"><label>Contraseña temporal</label><input name="password" type="password" minlength="8" maxlength="72" autocomplete="new-password" placeholder="Mínimo 8 caracteres"></div><div id="userMsg"></div><button class="btn btn-primary btn-block" type="submit">Crear / actualizar usuario</button></form>`);
+  const allowedRoles=creatableUserRoles();
+  const roleOptions=allowedRoles.map(code=>`<option value="${safe(code)}">${safe(roleLabels[code]||code)}</option>`).join('');
+  if(!roleOptions){ toast('Tu cuenta no puede crear usuarios con los permisos actuales.'); return; }
+  modal(h`<div class="modal-head"><div><span class="tag">Usuarios</span><h2>Crear usuario</h2><p class="muted">Crea una cuenta institucional nueva. Solo aparecen roles inferiores al nivel de tu cuenta; Super Admin puede administrar el nivel superior.</p></div><button class="close-btn" data-close>×</button></div><form id="userForm"><div class="field"><label>Correo</label><input name="email" type="email" required autocomplete="off" placeholder="usuario@sanpedro-valle.gov.co"></div><div class="field"><label>Nombre completo</label><input name="full_name" required minlength="3" maxlength="160" autocomplete="off"></div><div class="form-grid"><div class="field"><label>Rol</label><select name="role_code">${roleOptions}</select></div><div class="field"><label>Equipo</label><select name="team_code"><option value="">Sin equipo</option><option value="TIC">TIC</option><option value="COM">Comunicaciones</option></select></div></div><div class="field"><label>Contraseña temporal</label><input name="password" type="password" required minlength="12" maxlength="72" autocomplete="new-password" placeholder="Mínimo 12 caracteres"><small>Debe combinar al menos tres grupos entre mayúsculas, minúsculas, números y símbolos.</small></div><div id="userMsg"></div><button class="btn btn-primary btn-block" type="submit">Crear usuario</button></form>`);
+  const roleSelect = document.querySelector('#userForm [name="role_code"]');
+  const teamSelect = document.querySelector('#userForm [name="team_code"]');
+  const syncTeamForRole = ()=>{
+    const role = roleSelect?.value || 'requester';
+    if(!teamSelect) return;
+    if(role==='communication_agent') teamSelect.value='COM';
+    else if(role==='tic_admin') teamSelect.value='TIC';
+    else teamSelect.value='';
+  };
+  roleSelect?.addEventListener('change',syncTeamForRole);
+  syncTeamForRole();
   document.getElementById('userForm').addEventListener('submit',saveUser);
 }
 async function saveUser(e){
-  e.preventDefault(); const fd=new FormData(e.target); const body=Object.fromEntries(fd.entries()); const msg=document.getElementById('userMsg'); msg.innerHTML='<div class="warning">Procesando usuario…</div>';
-  try{ await invokeProtectedFunction('admin-users',{ action:'upsert_user', ...body }); msg.innerHTML='<div class="success">Usuario creado o actualizado.</div>'; toast('Usuario listo.'); await loadProfiles(); setTimeout(()=>{ clearModal(); renderShell(); },900); }
-  catch(error){ msg.innerHTML=`<div class="error">${safe(error.message || 'No fue posible crear usuario.')}</div>`; }
+  e.preventDefault();
+  const fd=new FormData(e.target);
+  const body=Object.fromEntries(fd.entries());
+  const msg=document.getElementById('userMsg');
+  const passwordError=validateNewPassword(body.password);
+  if(passwordError){ msg.innerHTML=`<div class="error">${safe(passwordError)}</div>`; return; }
+  if(body.role_code==='communication_agent' && body.team_code!=='COM'){ msg.innerHTML='<div class="error">El rol Comunicaciones debe pertenecer al equipo COM.</div>'; return; }
+  if(body.role_code==='tic_admin' && body.team_code!=='TIC'){ msg.innerHTML='<div class="error">El Administrador TIC debe pertenecer al equipo TIC.</div>'; return; }
+  if(['requester','secretary_admin','super_admin'].includes(body.role_code) && body.team_code){ msg.innerHTML='<div class="error">Este rol no debe recibir un equipo operativo TIC/COM.</div>'; return; }
+  msg.innerHTML='<div class="warning">Creando usuario institucional…</div>';
+  try{
+    await invokeProtectedFunction('admin-users',{ action:'create_user', ...body });
+    msg.innerHTML='<div class="success">Usuario creado correctamente.</div>';
+    toast('Usuario institucional creado.');
+    await loadProfiles();
+    setTimeout(()=>{ clearModal(); renderShell(); },900);
+  }catch(error){
+    msg.innerHTML=`<div class="error">${safe(error.message || 'No fue posible crear usuario.')}</div>`;
+  }
 }
 async function runImport(type){
   const input = document.querySelector(`[data-import-file="${type}"]`); const result=document.getElementById('importResult');

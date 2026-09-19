@@ -1,0 +1,49 @@
+name: User security tests
+
+on:
+  pull_request:
+    paths:
+      - 'app.js'
+      - 'supabase/functions/admin-users/**'
+      - 'tests/admin-users-policy.test.mjs'
+      - '.github/workflows/user-security-tests.yml'
+  push:
+    branches:
+      - main
+      - 'audit/**'
+    paths:
+      - 'app.js'
+      - 'supabase/functions/admin-users/**'
+      - 'tests/admin-users-policy.test.mjs'
+      - '.github/workflows/user-security-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  user-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate browser JavaScript
+        run: node --check app.js
+
+      - name: Run user policy tests
+        run: node --test tests/admin-users-policy.test.mjs
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Check Edge Function
+        run: deno check supabase/functions/admin-users/index.ts
