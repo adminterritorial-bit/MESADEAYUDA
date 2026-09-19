@@ -85,3 +85,13 @@ export function canManageTarget({ callerRoles = [], targetRoles = [], requestedR
 
   return { allowed: true, reason: '' };
 }
+
+export function validateRoleTeamConsistency(roleCode, teamCode) {
+  if (roleCode === 'communication_agent' && teamCode !== 'COM') {
+    throw new Error('El rol Comunicaciones debe pertenecer al equipo COM.');
+  }
+  if (roleCode === 'tic_admin' && teamCode !== 'TIC') {
+    throw new Error('El rol Administrador TIC debe pertenecer al equipo TIC.');
+  }
+  return true;
+}
