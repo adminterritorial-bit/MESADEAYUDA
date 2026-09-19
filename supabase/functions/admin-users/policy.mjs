@@ -67,20 +67,40 @@ export function validatePassword(value) {
   return password;
 }
 
-export function canManageTarget({ callerRoles = [], targetRoles = [], requestedRole = null, sameUser = false }) {
-  const callerIsSuperAdmin = callerRoles.includes('super_admin');
-  const targetIsSuperAdmin = targetRoles.includes('super_admin');
+const ROLE_LEVEL = Object.freeze({
+  requester: 10,
+  communication_agent: 20,
+  tic_admin: 30,
+  secretary_admin: 40,
+  super_admin: 50,
+});
 
+export function highestRoleLevel(roles = []) {
+  return roles.reduce((max, role) => Math.max(max, ROLE_LEVEL[role] || 0), 0);
+}
+
+export function canManageTarget({ callerRoles = [], targetRoles = [], requestedRole = null, sameUser = false }) {
   if (sameUser) {
     return { allowed: false, reason: 'Usa la opción Mi contraseña para cambiar tu propia clave.' };
   }
 
-  if (targetIsSuperAdmin && !callerIsSuperAdmin) {
-    return { allowed: false, reason: 'Solo un Super Admin puede administrar la contraseña de otro Super Admin.' };
+  const callerLevel = highestRoleLevel(callerRoles);
+  if (!callerLevel) return { allowed: false, reason: 'El administrador no tiene un rol reconocido.' };
+
+  if (targetRoles.length) {
+    const targetLevel = highestRoleLevel(targetRoles);
+    const topPeerException = callerLevel === ROLE_LEVEL.super_admin && targetLevel === ROLE_LEVEL.super_admin;
+    if (callerLevel <= targetLevel && !topPeerException) {
+      return { allowed: false, reason: 'No puedes administrar una cuenta con un nivel de privilegio igual o superior al tuyo.' };
+    }
   }
 
-  if (requestedRole === 'super_admin' && !callerIsSuperAdmin) {
-    return { allowed: false, reason: 'Solo un Super Admin puede asignar el rol Super Admin.' };
+  if (requestedRole) {
+    const requestedLevel = ROLE_LEVEL[requestedRole] || 0;
+    const topPeerException = callerLevel === ROLE_LEVEL.super_admin && requestedLevel === ROLE_LEVEL.super_admin;
+    if (callerLevel <= requestedLevel && !topPeerException) {
+      return { allowed: false, reason: 'No puedes asignar un rol con un nivel de privilegio igual o superior al tuyo.' };
+    }
   }
 
   return { allowed: true, reason: '' };
