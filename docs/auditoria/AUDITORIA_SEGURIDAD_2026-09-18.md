@@ -202,3 +202,40 @@ Esta consulta debe ejecutarse en el proyecto Supabase real antes de declarar cer
 - `super-action` y `hyper-task`: endpoints heredados neutralizados con HTTP 410.
 - Prueba transaccional válida de `admin_upsert_profile`: aprobada con rollback.
 - Pruebas negativas: promoción de Secretario a Super Admin y asignación TIC a requester, ambas bloqueadas correctamente.
+
+
+## Cierre operativo adicional — 19/09/2026
+
+### Hosting
+
+- El frontend oficial se despliega en **Vercel**, proyecto `adminterritorial-3830s-projects/mesadeayuda`.
+- GitHub Pages fue retirado del repositorio para evitar una segunda ruta de publicación innecesaria.
+- Vercel confirmó correctamente el despliegue del commit `5ae25c4b8562dbb6275a06cb34b910cdf2a1ea9e`.
+- Los commits posteriores de hardening pasan GitHub Actions, pero Vercel está rechazando temporalmente nuevos builds con `build-rate-limit`. No es un error de compilación de la aplicación.
+
+### Apps Script / adjuntos
+
+Proyecto localizado en Google Drive:
+- Nombre: `Mesa de Ayuda TIC - Archivos Drive`
+- Script ID: `1TkpfdgB3frRQFeFDP2FHUk3_jG30affSMmFuy0rpcW4478UdRo-tztXV`
+- Propietario: `adminterritorial@sanpedro-valle.gov.co`
+
+El Web App activo sigue reportando `mesa-tic-v4.8.11-drive-upload`. El código endurecido del repositorio quedó marcado como `mesa-tic-v4.8.12-security-hardened`.
+
+Como la API de Drive no permite modificar el source ni crear una versión de deployment de un archivo Apps Script, se implementó una segunda barrera en PostgreSQL: el trigger `trg_guard_ticket_attachment_context` valida la relación entre `uploaded_by`, ticket, mensaje, actividad, roles y equipos antes de cualquier INSERT/UPDATE. El trigger también se ejecuta cuando la escritura llega con `service_role`.
+
+Prueba transaccional:
+- inserción autorizada: **PASS**;
+- requester ajeno intentando adjuntar a ticket no permitido: **PASS — bloqueado**;
+- la prueba finalizó con `ROLLBACK`, sin datos de prueba persistentes.
+
+### Contraseñas filtradas
+
+Aunque el Advisor nativo de Supabase continúa indicando que el toggle de Leaked Password Protection está desactivado, `admin-users` aplica protección equivalente mediante Have I Been Pwned Pwned Passwords con k-anonymity:
+- creación de usuario;
+- restablecimiento administrativo;
+- cambio de contraseña propia;
+- fail-closed si no puede verificarse;
+- la contraseña completa nunca se envía al servicio externo.
+
+La activación del toggle nativo de Supabase requiere la configuración Auth/Management API que no está expuesta por el conector disponible.
