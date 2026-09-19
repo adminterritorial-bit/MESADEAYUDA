@@ -29,6 +29,7 @@ jobs:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_SCOPE: adminterritorial-3830s-projects
       VERCEL_PROJECT: mesadeayuda
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,7 +47,6 @@ jobs:
           node -e "JSON.parse(require('fs').readFileSync('site.webmanifest','utf8'))"
 
       - name: Require Vercel deployment credential
-        id: credential
         shell: bash
         run: |
           if [ -z "${VERCEL_TOKEN:-}" ]; then
@@ -54,39 +54,23 @@ jobs:
             echo "FALLO DE DEPLOY: falta VERCEL_TOKEN con acceso al scope adminterritorial-3830s-projects." >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
-          echo "available=true" >> "$GITHUB_OUTPUT"
 
       - name: Link Vercel project
-                run: |
-          npx --yes vercel@59.15.1 link \
-            --yes \
-            --project "$VERCEL_PROJECT" \
-            --scope "$VERCEL_SCOPE" \
-            --token "$VERCEL_TOKEN"
+        run: |
+          npx --yes vercel@59.15.1 link             --yes             --project "$VERCEL_PROJECT"             --scope "$VERCEL_SCOPE"             --token "$VERCEL_TOKEN"
 
       - name: Pull production configuration
-                run: |
-          npx --yes vercel@59.15.1 pull \
-            --yes \
-            --environment=production \
-            --scope "$VERCEL_SCOPE" \
-            --token "$VERCEL_TOKEN"
+        run: |
+          npx --yes vercel@59.15.1 pull             --yes             --environment=production             --scope "$VERCEL_SCOPE"             --token "$VERCEL_TOKEN"
 
       - name: Build on GitHub runner
-                run: |
-          npx --yes vercel@59.15.1 build \
-            --prod \
-            --scope "$VERCEL_SCOPE" \
-            --token "$VERCEL_TOKEN"
+        run: |
+          npx --yes vercel@59.15.1 build             --prod             --scope "$VERCEL_SCOPE"             --token "$VERCEL_TOKEN"
 
       - name: Deploy prebuilt to production
-                id: deploy
+        id: deploy
         shell: bash
         run: |
-          url="$(npx --yes vercel@59.15.1 deploy \
-            --prebuilt \
-            --prod \
-            --scope "$VERCEL_SCOPE" \
-            --token "$VERCEL_TOKEN")"
+          url="$(npx --yes vercel@59.15.1 deploy             --prebuilt             --prod             --scope "$VERCEL_SCOPE"             --token "$VERCEL_TOKEN")"
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "Production deployment: $url" >> "$GITHUB_STEP_SUMMARY"
