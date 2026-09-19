@@ -258,3 +258,13 @@ Pruebas con `ROLLBACK`:
 Se añadieron índices FK priorizados para tickets, mensajes, actividades, recursos, perfiles/equipos y colas operativas. Se evitaron índices indiscriminados en catálogos pequeños.
 
 El workflow `deploy-static.yml` construye un artefacto runtime-only. La alta inicial de GitHub Pages no puede hacerse con el `GITHUB_TOKEN` normal; el pipeline despliega si Pages ya existe o si se configura `PAGES_TOKEN` con permisos administrativos/Pages. Mientras no exista ese permiso, el pipeline valida y empaqueta sin dejar `main` en rojo.
+
+
+### Optimización de RLS — 19/09/2026
+
+Se reescribieron 17 policies para usar `(select auth.uid())` en lugar de reevaluar `auth.uid()` por cada fila. La lógica de autorización se conservó sin cambios.
+
+Resultado del Performance Advisor:
+- `auth_rls_initplan`: **17 → 0**.
+- FKs sin índice: **25 → 7** tras priorizar relaciones operativas.
+- Los avisos restantes de índices recién creados como `unused_index` no implican error; sus estadísticas de uso parten en cero inmediatamente después de crearlos.
