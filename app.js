@@ -1780,6 +1780,17 @@ function openDriveConnectionModal(){
 }
 function openUserModal(){
   modal(h`<div class="modal-head"><div><span class="tag">Usuarios</span><h2>Crear usuario</h2><p class="muted">Crea una cuenta institucional nueva. Si el correo ya existe, la Mesa no sobrescribirá esa cuenta.</p></div><button class="close-btn" data-close>×</button></div><form id="userForm"><div class="field"><label>Correo</label><input name="email" type="email" required autocomplete="off" placeholder="usuario@sanpedro-valle.gov.co"></div><div class="field"><label>Nombre completo</label><input name="full_name" required minlength="3" maxlength="160" autocomplete="off"></div><div class="form-grid"><div class="field"><label>Rol</label><select name="role_code"><option value="requester">Funcionario solicitante</option><option value="communication_agent">Comunicaciones</option><option value="tic_admin">Administrador TIC</option><option value="secretary_admin">Secretario General</option><option value="super_admin">Super Admin</option></select></div><div class="field"><label>Equipo</label><select name="team_code"><option value="">Sin equipo</option><option value="TIC">TIC</option><option value="COM">Comunicaciones</option></select></div></div><div class="field"><label>Contraseña temporal</label><input name="password" type="password" required minlength="12" maxlength="72" autocomplete="new-password" placeholder="Mínimo 12 caracteres"><small>Debe combinar al menos tres grupos entre mayúsculas, minúsculas, números y símbolos.</small></div><div id="userMsg"></div><button class="btn btn-primary btn-block" type="submit">Crear usuario</button></form>`);
+  const roleSelect = document.querySelector('#userForm [name="role_code"]');
+  const teamSelect = document.querySelector('#userForm [name="team_code"]');
+  const syncTeamForRole = ()=>{
+    const role = roleSelect?.value || 'requester';
+    if(!teamSelect) return;
+    if(role==='communication_agent') teamSelect.value='COM';
+    else if(role==='tic_admin') teamSelect.value='TIC';
+    else teamSelect.value='';
+  };
+  roleSelect?.addEventListener('change',syncTeamForRole);
+  syncTeamForRole();
   document.getElementById('userForm').addEventListener('submit',saveUser);
 }
 async function saveUser(e){
@@ -1791,6 +1802,7 @@ async function saveUser(e){
   if(passwordError){ msg.innerHTML=`<div class="error">${safe(passwordError)}</div>`; return; }
   if(body.role_code==='communication_agent' && body.team_code!=='COM'){ msg.innerHTML='<div class="error">El rol Comunicaciones debe pertenecer al equipo COM.</div>'; return; }
   if(body.role_code==='tic_admin' && body.team_code!=='TIC'){ msg.innerHTML='<div class="error">El Administrador TIC debe pertenecer al equipo TIC.</div>'; return; }
+  if(['requester','secretary_admin','super_admin'].includes(body.role_code) && body.team_code){ msg.innerHTML='<div class="error">Este rol no debe recibir un equipo operativo TIC/COM.</div>'; return; }
   msg.innerHTML='<div class="warning">Creando usuario institucional…</div>';
   try{
     await invokeProtectedFunction('admin-users',{ action:'create_user', ...body });
