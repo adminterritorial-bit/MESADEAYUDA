@@ -1849,7 +1849,7 @@ async function runImport(type){
   if(!input?.files?.length){ result.innerHTML='<div class="warning">Selecciona primero un CSV.</div>'; return; }
   const text = await input.files[0].text(); result.innerHTML='<div class="warning">Validando CSV…</div>';
   const { data: session } = await supabase.auth.getSession();
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/bulk-import`, { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${session.session?.access_token||''}` }, body: JSON.stringify({ type, csv:text, dry_run:false }) }).catch(err=>({ ok:false, json:async()=>({ error:err.message }) }));
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/bulk-import`, { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${session.session?.access_token||''}`, 'apikey':SUPABASE_PUBLISHABLE_KEY }, body: JSON.stringify({ type, csv:text, dry_run:false }) }).catch(err=>({ ok:false, json:async()=>({ error:err.message }) }));
   const payload = await res.json().catch(()=>({ error:'Respuesta no válida' }));
   result.innerHTML = (!res.ok || payload.error) ? `<div class="error">${safe(payload.error || 'No fue posible importar. Revisa la función bulk-import.')}</div>` : `<div class="success">Importación procesada. Registros: ${safe(payload.processed ?? payload.count ?? '')}</div>`;
 }
