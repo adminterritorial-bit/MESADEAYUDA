@@ -1407,3 +1407,44 @@ body{font-size:15px;line-height:1.42;}
 @media (prefers-reduced-motion:reduce){
   .login-shell,.login-shell:before,.login-hero,.login-hero:before,.login-hero:after,.login-logo,.login-panel,.login-card *{animation:none!important;transition:none!important}
 }
+
+
+/* v4.9.3 · Portal del solicitante: contraste corregido desde raíz */
+.requester-home-hero{
+  color:#123f7a!important;
+  background:
+    radial-gradient(circle at 92% 14%,rgba(75,163,236,.13) 0 11%,transparent 11.5%),
+    linear-gradient(135deg,#ffffff 0%,#f8fbff 46%,#edf7ff 100%)!important;
+  border:1px solid rgba(188,213,242,.82)!important;
+}
+.requester-home-hero:before{
+  background:linear-gradient(135deg,rgba(11,87,208,.08),rgba(0,163,199,.04))!important;
+}
+.requester-home-hero h2{
+  color:#1452a3!important;
+  opacity:1!important;
+  text-shadow:none!important;
+}
+.requester-home-hero p{
+  color:#466b98!important;
+  opacity:1!important;
+}
+.requester-home-hero .hero-actions .btn,
+.requester-home-hero .hero-actions .btn-secondary,
+.requester-home-hero .hero-actions .premium-btn{
+  color:#1452a3!important;
+  background:rgba(255,255,255,.94)!important;
+  border:1px solid rgba(173,204,239,.88)!important;
+  box-shadow:0 10px 24px rgba(32,86,151,.08)!important;
+  opacity:1!important;
+}
+.requester-home-hero .hero-actions .btn:hover{
+  color:#0b57d0!important;
+  background:#ffffff!important;
+  border-color:#98c1f0!important;
+}
+.requester-home-hero .hero-actions .btn span,
+.requester-home-hero .hero-actions .btn strong{
+  color:inherit!important;
+  opacity:1!important;
+}
